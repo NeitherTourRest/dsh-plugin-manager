@@ -1,0 +1,30 @@
+{
+  "name": "dsh-client-ui-glass",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Frosted-glass skin for the dsh Web/Desktop GUI: adjustable surface opacity, backdrop blur, wallpaper, and a fully clear mode.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "client": {
+      "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": "*"
+  },
+  "license": "MIT"
+}

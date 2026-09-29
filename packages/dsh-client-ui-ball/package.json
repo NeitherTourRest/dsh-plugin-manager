@@ -1,0 +1,30 @@
+{
+  "name": "dsh-client-ui-ball",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared floating ball for the dsh GUI: a draggable, customizable mascot button that hosts the settings panel of every other dsh plugin through the ctx.ball service.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "client": {
+      "platform": "web"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": "*"
+  },
+  "license": "MIT"
+}

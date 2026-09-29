@@ -1,0 +1,7 @@
+# Bundle layer for dsh-client-ui-ball. The client-modules service only serves a
+# browser half for a package that is a Loader entry, so the row below is what
+# activates the plugin; the package's own `dsh.bundle` declaration is what lets
+# the Desktop Plugins page install it.
+- insert:
+    - id: ui-ball
+      name: 'dsh-client-ui-ball'

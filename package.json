@@ -1,0 +1,17 @@
+{
+  "name": "dsh-ui-plugins",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local dsh UI plugins: a shared floating ball that hosts every plugin's settings panel, and a frosted-glass skin.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node test/verify-ball.mjs && node test/verify-glass.mjs && node test/verify-together.mjs",
+    "test:ball": "node test/verify-ball.mjs",
+    "test:glass": "node test/verify-glass.mjs",
+    "test:together": "node test/verify-together.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1"
+  }
+}
