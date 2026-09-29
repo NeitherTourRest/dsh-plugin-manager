@@ -1,8 +1,19 @@
 # dsh-ui-plugins
 
-给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 桌面版 / Web 版做的两个界面插件。
+<img src="packages/dsh-client-ui-ball/assets/mascot.png" width="132" align="right" alt="鲸鱼娘">
 
-> A shared floating-ball panel host and a frosted-glass skin for the dsh GUI. Both are hand-written, build-free Cordis client plugins.
+给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 桌面版 / Web 版做的两个界面插件：一个**共享悬浮球**（同时是插件管理器），一套**透明磨砂玻璃外观**。
+
+> A shared floating-ball plugin manager and a frosted-glass skin for the dsh GUI. Both are hand-written, build-free Cordis client plugins.
+
+**特性**
+
+- 🐳 **悬浮球是插件管理器**，不是"一个放设置的地方"。插件在 `package.json` 里声明 [`dsh.ball`](packages/dsh-client-ui-ball/PROTOCOL.md) 一段，就会被识别：进列表、**自动生成设置表单**、可启用/停用——**不用写面板、不用写配置卡片、不用注册 slot**
+- 👀 **已停用的插件也看得见**。Host 扫的是 manifest 而不是等插件自报，所以"装了但关着"的插件照样列出，带状态标记，能直接在球里打开
+- 🎨 **形象可换**：画廊点选、URL、表情符号，或做成带状态的多帧形象包（空闲 / 工作中 / **等你审批** / 刚完成，按会话状态自动切）
+- 🪟 **磨砂玻璃**：不透明度、磨砂强度、背景饱和度、背景压暗、背景画面全部实时可调
+- 📦 **免构建**：`lib/` 里就是实际执行的代码，克隆下来就能装，不需要任何打包步骤
+- ✅ **233 项 jsdom 断言**，覆盖协议、管理动作、跨插件契约与两条降级路径
 
 ```
         ╭──────────────────────────╮
@@ -10,7 +21,7 @@
         ├──────────────────────────┤
         │  ◐  磨砂外观              │  ← dsh-client-ui-glass
         │  🐳 悬浮球外观            │  ← dsh-client-ui-ball
-        │  ⚙  你的插件…             │  ← ctx.ball.register(...)
+        │  ⚙  你的插件…             │  ← dsh.ball 声明
         ╰──────────────────────────╯
                     ▲
                   (◕‿◕)
@@ -18,10 +29,12 @@
 
 | 包 | 作用 |
 |---|---|
-| [`dsh-client-ui-ball`](packages/dsh-client-ui-ball/README.md) | **共享悬浮球 / 插件管理器**：可拖动、可换形象的面板宿主。定义了 [`dsh.ball` 协议](packages/dsh-client-ui-ball/PROTOCOL.md)——插件在 `package.json` 里声明一段就会被识别，获得统一的列表、设置表单与启用/停用 |
+| [`dsh-client-ui-ball`](packages/dsh-client-ui-ball/README.md) | **共享悬浮球 / 插件管理器**：可拖动、可换形象的面板宿主。定义并实现了 [`dsh.ball` 协议](packages/dsh-client-ui-ball/PROTOCOL.md) |
 | [`dsh-client-ui-glass`](packages/dsh-client-ui-glass/README.md) | **透明磨砂玻璃外观**：不透明度 / 磨砂强度 / 背景画面 / 完全透明，面板由悬浮球托管 |
 
-两者都是**免构建**的纯 JavaScript：Host 半边是普通 ESM，浏览器半边是手写的 `window.__ModuleLoader__.load({ id, factory })` 闭包工厂——也就是 dsh 官方 tsdown 客户端预设产物遵守的同一注册协议。仓库的 `packages/client/tsdown.client.ts` 预设没有对外发布，第三方包只能自带打包器或手写这个包装，这里选择手写，因此**克隆下来就能用，不需要任何构建**。
+两者都是**免构建**的纯 JavaScript：Host 半边是普通 ESM，浏览器半边是手写的 `window.__ModuleLoader__.load({ id, factory })` 闭包工厂——也就是 dsh 官方 tsdown 客户端预设产物遵守的同一注册协议。dsh 仓库的 `packages/client/tsdown.client.ts` 预设没有对外发布，第三方包只能自带打包器或手写这个包装，这里选择手写。
+
+> **许可分层**：代码 MIT，[`assets/mascot.png`](packages/dsh-client-ui-ball/assets/mascot.png) 单独按 CC BY-NC-SA 4.0。详见[文末](#许可)与 [`NOTICE.md`](NOTICE.md)。
 
 ---
 
@@ -73,29 +86,47 @@ dsh 会热重载 profile 的 `cordis.patch.yml`，通常**不用重启**。若�
 
 ---
 
-## 给插件作者：`ctx.ball` API
+## 给插件作者：`dsh.ball` 协议
 
-这是本仓库的主要价值。任何 dsh 客户端插件都可以往悬浮球里加一个面板：
+这是本仓库的主要价值。**加入悬浮球只需要在 `package.json` 里声明一段**：
 
-```js
-export function apply(ctx) {
-  const ball = ctx.get('ball')          // 可选依赖
-  if (ball === undefined) return
-
-  ctx.effect(() => ball.register({
-    id: 'my-plugin',                    // 唯一 id
-    label: () => t('panel'),            // 字符串，或返回字符串的函数
-    icon: '⚙',
-    order: 20,
-    render(container, api) {
-      container.append(myPanel())       // container 是球面板里的一个 div
-      return () => { /* 离开面板时清理 */ }
-    },
-  }), 'my-plugin: ball panel')
+```json
+"dsh": {
+  "ball": {
+    "id": "my-plugin",
+    "title": { "zh": "我的插件", "en": "My plugin" },
+    "icon": "⚙",
+    "order": 20,
+    "settings": {
+      "namespace": "my-plugin",
+      "fields": [
+        { "key": "enabled", "kind": "toggle", "label": { "zh": "启用", "en": "Enabled" } },
+        { "key": "level", "kind": "range", "min": 0, "max": 10, "step": 1,
+          "unit": "级", "label": { "zh": "等级", "en": "Level" } }
+      ]
+    }
+  }
 }
 ```
 
-完整契约见 [`dsh-client-ui-ball` 的 README](packages/dsh-client-ui-ball/README.md#二给插件作者ctxball-api)。
+悬浮球会替你完成：列出模块（**即使你的客户端半边没在运行**）、从字段生成设置表单、注册 Plugins 页面的配置卡片、提供启用/停用与恢复默认。
+
+字段类型：`toggle` / `range` / `select` / `text` / `image`（后者自带文件选择器）。
+**完整规范见 [`PROTOCOL.md`](packages/dsh-client-ui-ball/PROTOCOL.md)。**
+
+需要自定义面板时，在客户端半边再注册一个实时面板即可，**实时面板优先**：
+
+```js
+const ball = ctx.get('ball')
+ctx.effect(() => ball.register({
+  id: 'my-plugin',                    // 必须与清单里的 id 一致
+  label: () => t('panel'),
+  render(container, api) {
+    container.append(myPanel())       // container 是球面板里的一个 div
+    return () => { /* 离开面板时清理 */ }
+  },
+}), 'my-plugin: ball panel')
+```
 
 **要点：**
 
@@ -114,7 +145,7 @@ export function apply(ctx) {
 |---|---|
 | Host 半边 | `ctx.settings.register(ns, schema)` → 持久化到 `$DSH_HOME/settings.yaml` |
 | 浏览器半边 | `ctx.settingsScope.bind({ namespace })`，服务不可用时退回 `localStorage` |
-| Plugins 页面 | `ctx.slots.register` 进 `plugins.row.config`，key = `<包名>#<行id>` |
+| Plugins 页面 | 悬浮球按声明**替你注册** `plugins.row.config` 卡片，key = `<包名>#<行id>` |
 | 文案 | `ctx.locale.register(ns, { zh, en })`，卡片通过 `t` 取词 |
 
 滑块与拖动都是**只改本地、松手落盘一次**，指针节奏不会打到 settings 线路上。
