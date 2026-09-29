@@ -132,11 +132,12 @@ npm test        # 三个 jsdom 验证脚本
 
 | 脚本 | 覆盖 |
 |---|---|
-| `test/verify-ball.mjs` | 47 项：注册协议、`ctx.ball` 服务契约、形象渲染、拖动、面板托管、配置卡片、卸载 |
+| `test/verify-ball.mjs` | 51 项：注册协议、`ctx.ball` 服务契约、形象渲染与本地素材探测、拖动、面板托管、配置卡片、卸载 |
+| `test/verify-ball-host.mjs` | 21 项：**Host 半边的本地素材路由**——文件优先级、content-type、405 方法守卫、空目录 404、HEAD 不带 body |
 | `test/verify-glass.mjs` | 59 项：**带球 / 不带球两种宿主形态**、主题令牌层、背景层、面板交互、配置卡片、卸载 |
 | `test/verify-together.mjs` | 15 项：把两个包加载进同一个文档，用**真实的 `ctx.ball` 服务**驱动玻璃面板——验证跨插件契约本身 |
 
-它们验证**行为与协议**，不验证视觉观感。磨砂强度合不合意得在真机上对着自己的壁纸调。
+共 146 项。它们验证**行为与协议**，不验证视觉观感。磨砂强度合不合意得在真机上对着自己的壁纸调。
 
 ---
 
@@ -162,6 +163,18 @@ npm test        # 三个 jsdom 验证脚本
 
 ## 许可
 
-[MIT](LICENSE)
+代码 [MIT](LICENSE)。
 
-两个插件与 DeepSeek 官方无隶属关系。悬浮球内置的 Q 版鲸鱼娘是**为本项目原创绘制**的 SVG，不是 DeepSeek 官方吉祥物素材；形象可在设置里替换成任意图片。
+两个插件与 DeepSeek 官方无隶属关系。
+
+**关于「鲸鱼娘」：** 社区的鲸鱼娘形象是一个有明确许可链的二创角色（原型为画师上山无星的「明月」，素材 **CC BY-NC-SA 4.0**：署名 / 禁止商用 / 相同方式共享），与本仓库的 MIT **直接冲突**。因此本仓库**不分发**该素材，也不照着它重绘。
+
+要使用它，把它放进悬浮球的本地素材目录即可——那个目录在 `.gitignore` 里，**素材永远不进仓库历史**：
+
+```
+<profile>/node_modules/dsh-client-ui-ball/assets/mascot.png
+```
+
+细节与许可链说明见 [`dsh-client-ui-ball/README.md`](packages/dsh-client-ui-ball/README.md#四形象内置图本地素材以及鲸鱼娘) 与 [`assets/README.md`](packages/dsh-client-ui-ball/assets/README.md)。
+
+悬浮球内置的 Q 版鲸鱼造型 SVG 是**为本项目原创绘制**的，不是 DeepSeek 官方素材，也不是上述角色。

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Verification harness for packages/dsh-client-ui-ball.
  * Loads the hand-written browser half inside jsdom against a mocked Cordis
  * client context, and asserts the registration protocol, the ctx.ball service
@@ -41,6 +41,25 @@ const pointer = (type, x, y) => {
   Object.defineProperty(event, 'pointerId', { value: 1 })
   return event
 }
+
+// jsdom loads no external resources, so the local-mascot probe would never
+// settle. This stand-in records the requested URL and lets the test decide the
+// outcome, which is the only way to exercise both branches deterministically.
+const probes = []
+class ImageStub {
+  constructor() {
+    this.listeners = new Map()
+    probes.push(this)
+  }
+  addEventListener(type, listener) {
+    this.listeners.set(type, listener)
+  }
+  /** Resolve the probe the way a real <img> would. */
+  settle(outcome) {
+    this.listeners.get(outcome)?.()
+  }
+}
+window.Image = ImageStub
 
 // --- a React stand-in: the card only needs element construction and hooks ---
 const reactStub = {
@@ -118,9 +137,23 @@ const art = shadow.querySelector('.art')
 const menu = shadow.querySelector('.menu')
 check('control surface is a shadow root', shadow !== null)
 check('surface starts hidden', surface.hasAttribute('hidden'))
-check('built-in mascot is rendered by default', art.innerHTML.includes('<svg') && art.dataset.kind === 'svg')
+check('built-in mascot is rendered before the probe settles', art.innerHTML.includes('<svg') && art.dataset.kind === 'svg')
 check('binds the ui-ball settings namespace', boundNamespace === 'ui-ball', String(boundNamespace))
 check('registers zh and en dictionaries', localeDicts.length === 1 && 'zh' in localeDicts[0].dicts && 'en' in localeDicts[0].dicts)
+
+// --- the local mascot probe -------------------------------------------------
+check('exactly one local mascot probe is issued', probes.length === 1, String(probes.length))
+check('the probe targets the Host mascot route', probes[0]?.src === '/ui-ball/mascot', String(probes[0]?.src))
+
+// With no asset on the Host the built-in art stays; that is the shipped default.
+probes[0].settle('error')
+check('a missing asset keeps the built-in art', art.dataset.kind === 'svg' && art.innerHTML.includes('<svg'))
+
+// With an asset present it becomes the default appearance.
+probes[0].settle('load')
+check('a present asset becomes the default artwork',
+  art.dataset.kind === 'img' && art.firstElementChild?.getAttribute('src') === '/ui-ball/mascot',
+  `${art.dataset.kind} ${art.firstElementChild?.getAttribute('src')}`)
 
 // --- the service contract ---------------------------------------------------
 check('service exposes register/entries/subscribe/open/close/toggle',

@@ -46,9 +46,27 @@ window.__ModuleLoader__.load({
     const SERVICE = 'ball'
 
     /**
+     * Route the Host half serves an optional local mascot on. The file lives at
+     * `assets/mascot.<ext>` beside the installed package, so artwork under its
+     * own licence can be dropped next to an installation instead of entering
+     * this repository.
+     */
+    const LOCAL_MASCOT_URL = '/ui-ball/mascot'
+
+    /**
+     * Local mascot state for this plugin run: `unknown` until the one probe
+     * settles, then `present` (the asset is the default artwork) or `absent`
+     * (the built-in art stays). Shared with the configuration card so the ball
+     * and its preview never disagree about which artwork is showing.
+     */
+    let localMascot = 'unknown'
+
+    /**
      * Built-in mascot: an original chibi whale-girl drawn for this plugin
-     * (flat shapes only, so it stays legible at small sizes). It is the
-     * default `image`; any other artwork replaces it through the settings.
+     * (flat shapes only, so it stays legible at small sizes). It is the default
+     * when neither `image` nor a local asset supplies artwork — notably, it is
+     * NOT the community's "whale girl" character, whose artwork is licensed
+     * CC BY-NC-SA 4.0 and deliberately not bundled here.
      */
     const MASCOT_SVG = [
       '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" focusable="false" aria-hidden="true">',
@@ -79,7 +97,7 @@ window.__ModuleLoader__.load({
         empty: '还没有插件向悬浮球注册面板。',
         summary: '悬浮球外观：形象、大小、透明度、动效',
         image: '形象',
-        imageHint: '留空用内置鲸鱼娘；也可填图片 URL 或一个表情符号',
+        imageHint: '留空时用 assets/mascot.* 里的本地图，没有则用内置形象；也可填图片 URL 或一个表情符号',
         imagePick: '选择图片',
         imageClear: '恢复内置',
         size: '大小',
@@ -99,7 +117,7 @@ window.__ModuleLoader__.load({
         empty: 'No plugin has registered a panel yet.',
         summary: 'Ball appearance: artwork, size, opacity, motion',
         image: 'Artwork',
-        imageHint: 'Leave empty for the built-in mascot; a URL or a single emoji also works',
+        imageHint: 'Empty uses assets/mascot.* beside the installed package, else the built-in art; a URL or a single emoji also works',
         imagePick: 'Choose image',
         imageClear: 'Restore built-in',
         size: 'Size',
@@ -507,25 +525,27 @@ window.__ModuleLoader__.load({
         surface.dataset.align = spot.x + size / 2 < window.innerWidth / 2 ? 'left' : 'right'
       }
 
-      /** Paint the mascot: built-in art, a glyph, or an image reference. */
+      /** Paint the mascot: an explicit source, the local asset, or the built-in art. */
       const paintArt = () => {
-        const image = (settings.get().image ?? '').trim()
-        const safe = safeUrl(image)
+        const safe = safeUrl((settings.get().image ?? '').trim())
+        // The local asset is part of the paint key: the probe settling has to
+        // repaint even though no setting moved.
+        const key = `${safe}|${localMascot}`
         // Rebuilding the art is the one expensive paint here, so it happens
         // only when the source actually moved — not on every slider tick.
-        if (safe === lastImage) return
-        lastImage = safe
+        if (key === lastImage) return
+        lastImage = key
         art.textContent = ''
-        if (safe === '') {
+        if (safe === '' && localMascot !== 'present') {
           art.dataset.kind = 'svg'
           art.innerHTML = MASCOT_SVG
-        } else if (isGlyph(safe)) {
+        } else if (safe !== '' && isGlyph(safe)) {
           art.dataset.kind = 'glyph'
           art.textContent = safe
         } else {
           art.dataset.kind = 'img'
           const element = document.createElement('img')
-          element.src = safe
+          element.src = safe === '' ? LOCAL_MASCOT_URL : safe
           element.alt = ''
           art.append(element)
         }
@@ -728,6 +748,13 @@ window.__ModuleLoader__.load({
         document.head.append(hostStyleTag)
         parent.append(host)
         renderAppearance()
+        // One probe decides whether the Host serves a local mascot. The result
+        // repaints the ball and the configuration card's preview; a composition
+        // without the Host route simply settles on 'absent'.
+        const probe = new Image()
+        probe.addEventListener('load', () => { localMascot = 'present'; renderAppearance() })
+        probe.addEventListener('error', () => { localMascot = 'absent'; renderAppearance() })
+        probe.src = LOCAL_MASCOT_URL
         return () => {
           hostStyleTag.remove()
           host.remove()
@@ -781,12 +808,12 @@ window.__ModuleLoader__.load({
           return () => { cardStyleTag.remove() }
         }, 'ui-ball: card stylesheet')
 
-        /** The mascot preview: built-in art, a glyph, or the chosen image. */
+        /** The mascot preview: the chosen image, the local asset, or the built-in art. */
         const preview = (image) => {
           const safe = safeUrl((image ?? '').trim())
-          if (safe === '') return h('i', { dangerouslySetInnerHTML: { __html: MASCOT_SVG } })
-          if (isGlyph(safe)) return h('i', { 'data-kind': 'glyph' }, safe)
-          return h('i', null, h('img', { src: safe, alt: '' }))
+          if (safe === '' && localMascot !== 'present') return h('i', { dangerouslySetInnerHTML: { __html: MASCOT_SVG } })
+          if (safe !== '' && isGlyph(safe)) return h('i', { 'data-kind': 'glyph' }, safe)
+          return h('i', null, h('img', { src: safe === '' ? LOCAL_MASCOT_URL : safe, alt: '' }))
         }
 
         /**

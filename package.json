@@ -6,8 +6,9 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "test": "node test/verify-ball.mjs && node test/verify-glass.mjs && node test/verify-together.mjs",
+    "test": "node test/verify-ball.mjs && node test/verify-ball-host.mjs && node test/verify-glass.mjs && node test/verify-together.mjs",
     "test:ball": "node test/verify-ball.mjs",
+    "test:host": "node test/verify-ball-host.mjs",
     "test:glass": "node test/verify-glass.mjs",
     "test:together": "node test/verify-together.mjs"
   },

@@ -1,4 +1,4 @@
-﻿# dsh-client-ui-ball — 共享悬浮球
+# dsh-client-ui-ball — 共享悬浮球
 
 给 dsh 桌面版 / Web 版加一个**可拖动、可换形象**的悬浮球。它不只是个按钮，而是一个**面板宿主**：任何 dsh 插件都可以向它注册自己的设置面板，用户点一下球就能在同一个地方调所有插件。
 
@@ -112,7 +112,7 @@ export function apply(ctx) {
 
 | 参数 | 范围 | 说明 |
 |---|---|---|
-| 形象 | 空 / URL / 表情 | 留空用内置鲸鱼娘；填 URL 或 `data:` 用图片；填一个短字符（≤8、不含 `/` `:`）当表情符号渲染 |
+| 形象 | 空 / URL / 表情 | 留空时优先用 `assets/mascot.*` 本地素材，没有则用内置形象；填 URL 或 `data:` 用图片；填一个短字符（≤8、不含 `/` `:`）当表情符号渲染 |
 | 大小 | 28–96 px | |
 | 透明度 | 20–100% | |
 | 动效 | 呼吸 / 摇摆 / 静止 | 尊重 `prefers-reduced-motion` |
@@ -123,11 +123,28 @@ export function apply(ctx) {
 
 ---
 
-## 四、关于「鲸鱼娘」形象
+## 四、形象：内置图、本地素材、以及「鲸鱼娘」
 
-内置的是一个**为本插件原创绘制的 Q 版鲸鱼娘 SVG**——蓝色鲸鱼兜帽、头顶尾鳍、喷水、腮红，flat 色块，小尺寸下依然清晰。它是 `image` 为空时的默认值。
+### 三种来源，优先级从高到低
 
-它**不是** DeepSeek 官方吉祥物素材：我没有该素材的授权，也无法在离线环境获取，所以没有复制任何官方美术资源。想要官方形象，请在设置里填图片 URL 或用「选择图片」换成你自己的图。
+1. **设置里的「形象」**（URL / `data:` / 一个表情符号）
+2. **`assets/mascot.*` 本地素材** —— 见 [`assets/README.md`](assets/README.md)。放进**已安装副本**的这个目录，刷新页面即可成为默认形象
+3. **内置形象** —— 本插件原创的 Q 版鲸鱼造型 SVG（蓝色鲸鱼兜帽、头顶尾鳍、喷水、腮红），flat 色块，小尺寸下依然清晰
+
+第 2 条是为「鲸鱼娘」这类**带自己许可的素材**准备的：`assets/` 在 `.gitignore` 里，**素材永远不进仓库历史**。
+
+### 为什么内置的不是「鲸鱼娘」
+
+社区的**鲸鱼娘不是 DeepSeek 官方吉祥物**，而是一个有明确许可链的二创角色：
+
+- 原型是画师**上山无星**用 AI 工具创作的原创角色**「明月」**（2025 年 6 月发布），特征是渐变蓝长发、呆毛、鲸鱼状头鳍、蓝眼、大鲸尾；
+- 2026 年 4 月，B 站用户 **ZipZipPipe** 给它加上 DeepSeek 元素改成深蓝白女仆装，这才是目前流传的版本；
+- DeepSeek 官方只把**人格设定**做成了产品彩蛋（`【PERSONA_LOAD】CETACEA_LOLI`），**没有承认它是官方吉祥物**，也没有主张美术版权；
+- **素材许可是 CC BY-NC-SA 4.0**：必须署名、**禁止商用**、演绎作品必须同协议共享（见 [36氪的梳理](https://eu.36kr.com/en/p/3947452108789632)）。
+
+NC + SA 与本仓库的 MIT **直接冲突**。所以本仓库**不分发**该素材，也不照着它重绘（那属于演绎作品）。想用就放进 `assets/`——你自己本地用完全没问题，想公开分发时由你自己决定许可与署名。
+
+> DSH 社区已有多个鲸鱼娘桌宠/皮肤项目采用同样的做法（代码与素材分开授权），例如 [dsh-whale-girl-live2d](https://github.com/Andersen216/dsh-whale-girl-live2d)、[dsh-deep-whale](https://github.com/Small-tailqwq/dsh-deep-whale)、[codex-deepseek-pet](https://github.com/YunYueSama/codex-deepseek-pet)。
 
 ---
 
@@ -144,7 +161,8 @@ export function apply(ctx) {
 ## 六、验证
 
 ```sh
-node test/verify-ball.mjs        # 47 项：协议、服务、形象、拖动、面板托管、卡片、卸载
+node test/verify-ball.mjs        # 51 项：协议、服务、形象与本地素材探测、拖动、面板托管、卡片、卸载
+node test/verify-ball-host.mjs   # 21 项：Host 半边的本地素材路由（优先级、content-type、405、404、HEAD）
 node test/verify-together.mjs    # 15 项：与 dsh-client-ui-glass 的真实交叉集成
 ```
 
