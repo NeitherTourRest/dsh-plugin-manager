@@ -1,8 +1,8 @@
 {
-  "name": "dsh-ui-plugins",
+  "name": "dsh-plugin-manager",
   "version": "0.1.0",
   "private": true,
-  "description": "Local dsh UI plugins: a shared floating ball that hosts every plugin's settings panel, and a frosted-glass skin.",
+  "description": "A floating-ball plugin manager for DeepSeek Harness. A plugin declares dsh.ball in its package.json and gets a list entry, a generated settings form, a Plugins-page card, and an enable switch; a frosted-glass skin ships as the first plugin that uses it.",
   "type": "module",
   "license": "MIT",
   "scripts": {

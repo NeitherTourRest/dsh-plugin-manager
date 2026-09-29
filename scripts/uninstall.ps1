@@ -37,16 +37,27 @@ if (-not (Test-Path -LiteralPath $profileDir)) {
 }
 
 $patchPath = Join-Path $profileDir 'cordis.patch.yml'
-$begin = '# >>> dsh-ui-plugins >>>'
-$end = '# <<< dsh-ui-plugins <<<'
+$begin = '# >>> dsh-plugin-manager >>>'
+$end = '# <<< dsh-plugin-manager <<<'
+# The repository was called dsh-ui-plugins before the rename. A profile patched
+# by that version still carries its block, and must still be cleanable here.
+$legacyBegin = '# >>> dsh-ui-plugins >>>'
+$legacyEnd = '# <<< dsh-ui-plugins <<<'
 
 if (Test-Path -LiteralPath $patchPath) {
   $text = Get-Content -Raw -Encoding UTF8 $patchPath
-  $pattern = "(?ms)^\r?\n?" + [regex]::Escape($begin) + ".*?" + [regex]::Escape($end) + "\r?\n?"
-  if ($text -match $pattern) {
-    $stripped = [regex]::Replace($text, $pattern, '')
+  $stripped = $text
+  $removed = @()
+  foreach ($pair in @(@($begin, $end), @($legacyBegin, $legacyEnd))) {
+    $pattern = "(?ms)^\r?\n?" + [regex]::Escape($pair[0]) + ".*?" + [regex]::Escape($pair[1]) + "\r?\n?"
+    if ($stripped -match $pattern) {
+      $stripped = [regex]::Replace($stripped, $pattern, '')
+      $removed += $pair[0]
+    }
+  }
+  if ($removed.Count -gt 0) {
     Set-Content -LiteralPath $patchPath -Encoding UTF8 -NoNewline -Value $stripped
-    Write-Host "  patch   removed the dsh-ui-plugins block"
+    foreach ($marker in $removed) { Write-Host "  patch   removed the $marker block" }
   } else {
     Write-Host "  keep    cordis.patch.yml (no block found)"
   }

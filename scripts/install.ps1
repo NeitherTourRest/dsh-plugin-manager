@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   Install the dsh UI plugins from this repository into a dsh profile.
 
@@ -58,8 +58,12 @@ if (-not (Test-Path -LiteralPath $profileDir)) {
 
 $modulesDir = Join-Path $profileDir 'node_modules'
 $patchPath = Join-Path $profileDir 'cordis.patch.yml'
-$begin = '# >>> dsh-ui-plugins >>>'
-$end = '# <<< dsh-ui-plugins <<<'
+$begin = '# >>> dsh-plugin-manager >>>'
+$end = '# <<< dsh-plugin-manager <<<'
+# The repository was called dsh-ui-plugins before the rename. Replace that block
+# rather than leaving a profile with two entries for the same packages.
+$legacyBegin = '# >>> dsh-ui-plugins >>>'
+$legacyEnd = '# <<< dsh-ui-plugins <<<'
 
 Write-Host "profile   $profileDir"
 Write-Host "packages  $modulesDir"
@@ -95,9 +99,18 @@ $block = @(
 $blockText = ($block -join "`n") + "`n"
 
 $existing = if (Test-Path -LiteralPath $patchPath) { Get-Content -Raw -Encoding UTF8 $patchPath } else { '' }
+$legacyPattern = "(?ms)^\r?\n?" + [regex]::Escape($legacyBegin) + ".*?" + [regex]::Escape($legacyEnd) + "\r?\n?"
+$stripped = [regex]::Replace($existing, $legacyPattern, '')
+$migrated = $stripped -ne $existing
+$existing = $stripped
 if ($existing -match [regex]::Escape($begin)) {
   Write-Host ''
-  Write-Host "  keep    cordis.patch.yml (block already present)"
+  if ($migrated) {
+    Set-Content -LiteralPath $patchPath -Encoding UTF8 -NoNewline -Value $existing
+    Write-Host '  migrate replaced the block written under the old repository name'
+  } else {
+    Write-Host "  keep    cordis.patch.yml (block already present)"
+  }
 } else {
   if ($existing.Length -gt 0 -and -not $existing.EndsWith("`n")) { $existing += "`n" }
   Set-Content -LiteralPath $patchPath -Encoding UTF8 -NoNewline -Value ($existing + "`n" + $blockText)

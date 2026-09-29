@@ -1,10 +1,16 @@
-# dsh-ui-plugins
+# dsh-plugin-manager
 
 <img src="packages/dsh-client-ui-ball/assets/mascot.png" width="132" align="right" alt="鲸鱼娘">
 
-给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 桌面版 / Web 版做的两个界面插件：一个**共享悬浮球**（同时是插件管理器），一套**透明磨砂玻璃外观**。
+一个给 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 用的**插件管理器**——以一颗可拖动的悬浮球的形式待在你的界面上。
 
-> A shared floating-ball plugin manager and a frosted-glass skin for the dsh GUI. Both are hand-written, build-free Cordis client plugins.
+插件只要在自己的 `package.json` 里声明一段 [`dsh.ball`](packages/dsh-client-ui-ball/PROTOCOL.md)，就被它接管：进列表、**自动生成设置表单**、拿到 Plugins 页面的配置卡片、可以一键启用/停用。**插件不用写面板、不用写配置卡片、不用注册 slot。**
+
+> A floating-ball plugin manager for the dsh GUI. A plugin declares `dsh.ball` in its package.json and gets a list entry, a generated settings form, a Plugins-page card, and an enable switch — no panel, card, or slot registration of its own.
+
+> [!IMPORTANT]
+> **本项目不是 dsh 自带的 [`@deepseek-ai/dsh-plugin-manager`](https://github.com/deepseek-ai/deepseek-harness/tree/main/packages/boot/plugin-manager)。**
+> 那是 Host 侧的 profile 插件管理器（读写 `cordis.patch.yml` 的那个）；本项目的球是**在客户端驱动它**的那张脸——球上那个「停用」按钮走的就是它的 remote。名字撞了，东西不是一回事。
 
 **特性**
 
@@ -27,10 +33,14 @@
                   (◕‿◕)
 ```
 
-| 包 | 作用 |
+## 仓库里有什么
+
+| 包 | 角色 |
 |---|---|
-| [`dsh-client-ui-ball`](packages/dsh-client-ui-ball/README.md) | **共享悬浮球 / 插件管理器**：可拖动、可换形象的面板宿主。定义并实现了 [`dsh.ball` 协议](packages/dsh-client-ui-ball/PROTOCOL.md) |
-| [`dsh-client-ui-glass`](packages/dsh-client-ui-glass/README.md) | **透明磨砂玻璃外观**：不透明度 / 磨砂强度 / 背景画面 / 完全透明，面板由悬浮球托管 |
+| [`dsh-client-ui-ball`](packages/dsh-client-ui-ball/README.md) | **主体——管理器本身**。可拖动、可换形象的悬浮球，扫描 `dsh.ball` 清单、渲染设置表单、代理启用/停用。协议规范在 [`PROTOCOL.md`](packages/dsh-client-ui-ball/PROTOCOL.md) |
+| [`dsh-client-ui-glass`](packages/dsh-client-ui-glass/README.md) | **第一个适配它的插件**：透明磨砂玻璃外观（不透明度 / 磨砂强度 / 背景画面 / 完全透明）。它自己声明 `dsh.ball`，所以面板与配置卡片都是球给的 |
+
+后续适配悬浮球的插件都放这个仓库。**球是主体，插件是围绕它的赠品**——每加一个插件，球不用改一行代码。
 
 两者都是**免构建**的纯 JavaScript：Host 半边是普通 ESM，浏览器半边是手写的 `window.__ModuleLoader__.load({ id, factory })` 闭包工厂——也就是 dsh 官方 tsdown 客户端预设产物遵守的同一注册协议。dsh 仓库的 `packages/client/tsdown.client.ts` 预设没有对外发布，第三方包只能自带打包器或手写这个包装，这里选择手写。
 
@@ -88,7 +98,7 @@ dsh 会热重载 profile 的 `cordis.patch.yml`，通常**不用重启**。若�
 
 ## 给插件作者：`dsh.ball` 协议
 
-这是本仓库的主要价值。**加入悬浮球只需要在 `package.json` 里声明一段**：
+这是球的核心。**加入它只需要在 `package.json` 里声明一段**（不需要依赖本仓库的任何代码，也不需要装什么）：
 
 ```json
 "dsh": {
@@ -158,7 +168,7 @@ ctx.effect(() => ball.register({
 
 ```sh
 npm install     # 只为测试装 jsdom
-npm test        # 三个 jsdom 验证脚本
+npm test        # 四个 jsdom 验证脚本
 ```
 
 | 脚本 | 覆盖 |
