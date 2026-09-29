@@ -21,6 +21,39 @@
     },
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "ball": {
+      "id": "ui-glass",
+      "title": { "zh": "磨砂外观", "en": "Glass appearance" },
+      "description": { "zh": "不透明度、磨砂程度、背景画面", "en": "Opacity, frost, wallpaper" },
+      "icon": "◐",
+      "order": 10,
+      "settings": {
+        "namespace": "ui-glass",
+        "fields": [
+          { "key": "enabled", "kind": "toggle", "label": { "zh": "启用", "en": "Enabled" } },
+          { "key": "opacity", "kind": "range", "min": 0, "max": 100, "step": 1, "unit": "%", "label": { "zh": "不透明度", "en": "Opacity" } },
+          { "key": "blur", "kind": "range", "min": 0, "max": 40, "step": 1, "unit": "px", "label": { "zh": "磨砂程度", "en": "Frost" } },
+          { "key": "saturate", "kind": "range", "min": 100, "max": 200, "step": 5, "unit": "%", "label": { "zh": "背景饱和", "en": "Saturation" } },
+          { "key": "dim", "kind": "range", "min": 0, "max": 80, "step": 1, "unit": "%", "label": { "zh": "背景压暗", "en": "Dim" } },
+          {
+            "key": "fit",
+            "kind": "select",
+            "label": { "zh": "填充方式", "en": "Fit" },
+            "options": [
+              { "value": "cover", "label": { "zh": "铺满裁切", "en": "Cover" } },
+              { "value": "contain", "label": { "zh": "完整适应", "en": "Contain" } },
+              { "value": "repeat", "label": { "zh": "平铺", "en": "Tile" } }
+            ]
+          },
+          {
+            "key": "wallpaper",
+            "kind": "image",
+            "label": { "zh": "背景图", "en": "Wallpaper" },
+            "hint": { "zh": "http(s) / data: URL，或点「选择图片」选本地文件", "en": "An http(s)/data URL, or pick a local file" }
+          }
+        ]
+      }
     }
   },
   "peerDependencies": {

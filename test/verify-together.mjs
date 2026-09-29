@@ -70,6 +70,8 @@ const makeCtx = () => {
     },
     provide(name, value) { provided.set(name, value) },
     effect(execute, label) { const dispose = execute(); cleanups.push({ label, dispose }); return () => { dispose?.() } },
+    // Base Cordis Context members a client plugin may always use.
+    on() { return () => {} },
     inject(services, callback) {
       const list = Array.isArray(services) ? services : [services]
       // Only the ball request depends on another plugin being present; here it is.

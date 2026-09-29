@@ -61,6 +61,33 @@ class ImageStub {
 }
 window.Image = ImageStub
 
+// The `dsh.ball` directory the Host half would serve. It deliberately mixes a
+// live module, a declared-but-disabled one, and a malformed declaration.
+const directory = {
+  protocol: 1,
+  modules: [
+    { id: 'ui-ball', package: 'dsh-client-ui-ball', title: { zh: '悬浮球外观', en: 'Ball appearance' }, icon: '🐳', order: 0, rowId: 'ui-ball', entryId: 'include:ui-ball', enabled: true, active: true },
+    {
+      id: 'ui-glass', package: 'dsh-client-ui-glass', title: { zh: '磨砂外观', en: 'Glass appearance' },
+      icon: '◐', order: 10, rowId: 'ui-glass', entryId: 'include:ui-glass', enabled: false, active: false,
+      settings: {
+        namespace: 'ui-glass',
+        fields: [
+          { key: 'opacity', kind: 'range', min: 0, max: 100, step: 1, unit: '%', label: { zh: '不透明度', en: 'Opacity' } },
+          { key: 'enabled', kind: 'toggle', label: { zh: '启用', en: 'Enabled' } },
+        ],
+      },
+    },
+    { id: 'broken', package: '@fixture/bad', title: { zh: '坏的', en: 'Broken' }, order: 20, problem: 'bad id' },
+  ],
+}
+let directoryRequests = 0
+window.fetch = async (url) => {
+  directoryRequests += 1
+  if (url !== '/ui-ball/modules') return { ok: false, status: 404, json: async () => ({}) }
+  return { ok: true, status: 200, json: async () => directory }
+}
+
 // --- a React stand-in: the card only needs element construction and hooks ---
 const reactStub = {
   createElement: (type, props, ...children) => ({ type, props: props ?? {}, children }),
@@ -112,15 +139,30 @@ const provided = new Map()
 const cleanups = []
 const localeDicts = []
 const slotRegistrations = []
+const cordisListeners = []
+const rowToggles = []
 const ctx = {
-  get: (name) => (name === 'settingsScope' ? { bind: (spec) => { boundNamespace = spec.namespace; return scope } } : undefined),
+  get: (name) => {
+    if (name === 'settingsScope') return { bind: (spec) => { boundNamespace = spec.namespace; return scope } }
+    if (name === 'remote') return { pluginManager: { setPluginEnabled: async (id, on) => { rowToggles.push([id, on]); return { ok: true } } }, $on: () => () => {} }
+    return undefined
+  },
   provide: (name, value) => { provided.set(name, value) },
   effect(execute, label) {
     const dispose = execute()
     cleanups.push({ label, dispose })
     return () => { dispose?.() }
   },
-  inject(_services, callback) { callback(ctx); return () => {} },
+  inject(services, callback) {
+    const list = Array.isArray(services) ? services : [services]
+    // The ball requests `ball` when another plugin might provide the service;
+    // here it hosts itself, so the callback is simply not run.
+    if (list.includes('ball')) return () => {}
+    callback(ctx)
+    return () => {}
+  },
+  // Base Cordis Context members a client plugin may always use.
+  on(event, listener) { cordisListeners.push({ event, listener }); return () => {} },
   locale: {
     register: (ns, dicts) => { localeDicts.push({ ns, dicts }); return () => {} },
     bind: (ns) => (key) => (localeDicts.find(d => d.ns === ns)?.dicts.zh ?? {})[key] ?? key,
@@ -146,6 +188,7 @@ const fab = shadow.querySelector('.ball')
 const surface = shadow.querySelector('.surface')
 const art = shadow.querySelector('.art')
 const menu = shadow.querySelector('.menu')
+const panelBody = shadow.querySelector('.body')
 check('control surface is a shadow root', shadow !== null)
 check('surface starts hidden', surface.hasAttribute('hidden'))
 check('built-in mascot is rendered before the probe settles', art.innerHTML.includes('<svg') && art.dataset.kind === 'svg')
@@ -287,9 +330,66 @@ const page = card.component({ t: ctx.locale.bind('uiBall'), view: 'page' })
 check('the page view returns the configuration form element',
   typeof page?.type === 'function' && page.type.name === 'BallConfigForm', String(page?.type?.name ?? page?.type))
 
+// --- the declared-module directory ------------------------------------------
+// The Host half's listing is asynchronous; one microtask turn is enough for the
+// stubbed fetch to settle.
+await new Promise(resolve => { setTimeout(resolve, 0) })
+
+check('the directory is fetched once at mount', directoryRequests === 1, String(directoryRequests))
+check('the settings scope was bound for the declared namespace', boundNamespace !== undefined)
+
+// A module that both declares itself and registers live must appear once, with
+// the live panel winning presentation and no "not loaded" marker.
+const disposeLiveBall = ball.register({ id: 'ui-ball', label: '球', icon: '◉', order: 0, render: () => {} })
+
+ball.open()
+const rows = [...menu.children]
+check('declared modules join the menu in declared order',
+  rows.map(row => row.dataset.entry).join() === 'ui-ball,ui-glass,broken',
+  rows.map(row => row.dataset.entry).join())
+check('a module that is declared and live appears once, with no state chip',
+  rows[0].querySelector('.entry__state') === null, String(rows[0].querySelector('.entry__state')?.textContent))
+check('a title pair is resolved for the active language',
+  rows[1].querySelector('.entry__label').textContent === '磨砂外观',
+  rows[1].querySelector('.entry__label').textContent)
+check('a disabled row is marked', rows[1].querySelector('.entry__state')?.textContent === '已停用',
+  String(rows[1].querySelector('.entry__state')?.textContent))
+check('a malformed declaration is marked', rows[2].querySelector('.entry__state')?.textContent === '声明有误',
+  String(rows[2].querySelector('.entry__state')?.textContent))
+
+// Activating a declared module the ball has never heard from renders the form
+// from its declared fields — the point of the protocol.
+rows[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+const fields = [...panelBody.querySelectorAll('[data-field]')]
+check('the ball renders the declared settings form', fields.map(f => f.dataset.field).join() === 'opacity,enabled',
+  `${fields.map(f => f.dataset.field).join()} || body: ${panelBody.textContent.slice(0, 160)}`)
+check('a declared range keeps its declared bounds',
+  fields[0]?.type === 'range' && fields[0]?.min === '0' && fields[0]?.max === '100',
+  `${String(fields[0]?.type)} ${String(fields[0]?.min)}..${String(fields[0]?.max)}`)
+check('a declared toggle renders as a checkbox', fields[1]?.type === 'checkbox', String(fields[1]?.type))
+check('the form offers a reset', [...panelBody.querySelectorAll('button')].some(b => b.textContent === '恢复默认'))
+check('a disabled module is offered an enable action',
+  [...panelBody.querySelectorAll('button')].some(b => b.textContent === '启用这个插件'),
+  [...panelBody.querySelectorAll('button')].map(b => b.textContent).join(' | '))
+
+const enable = [...panelBody.querySelectorAll('button')].find(b => b.textContent === '启用这个插件')
+enable?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+await new Promise(resolve => { setTimeout(resolve, 0) })
+check('the enable action reaches the profile plugin manager',
+  rowToggles.length === 1 && rowToggles[0][0] === 'include:ui-glass' && rowToggles[0][1] === true,
+  JSON.stringify(rowToggles))
+check('the directory is refetched after a management action', directoryRequests === 2, String(directoryRequests))
+
+ball.close()
+
 // --- teardown ---------------------------------------------------------------
-check('every layer is owned by one effect', cleanups.length === 4,
-  cleanups.map(c => c.label).join(' | '))
+const labels = cleanups.map(cleanup => cleanup.label)
+check('every layer is owned by an effect',
+  ['ui-ball: settings scope', 'ui-ball: mascot and panel surface', 'ui-ball: directory invalidation',
+    'ui-ball: dictionaries', 'ui-ball: card stylesheet'].every(label => labels.includes(label)),
+  labels.join(' | '))
+check('binding a module namespace adds its own owned subscription',
+  labels.includes('ui-ball: ui-glass settings'), labels.join(' | '))
 for (const entry of cleanups) entry.dispose()
 check('teardown removes the ball host', doc.querySelector('.dshb-host') === null)
 check('teardown removes the injected styles',

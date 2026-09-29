@@ -1,0 +1,34 @@
+{
+  "name": "@fixture/good",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "dsh": {
+    "ball": {
+      "id": "fixture-good",
+      "title": { "zh": "完好的模块", "en": "Well-formed module" },
+      "description": { "zh": "用于验证目录扫描", "en": "Exercises the directory scan" },
+      "icon": "★",
+      "order": 3,
+      "settings": {
+        "namespace": "fixture-good",
+        "fields": [
+          { "key": "enabled", "kind": "toggle", "label": { "zh": "启用", "en": "Enabled" } },
+          { "key": "level", "kind": "range", "min": 0, "max": 10, "step": 2, "unit": "级", "label": { "zh": "等级", "en": "Level" }, "hint": { "zh": "提示", "en": "Hint" } },
+          {
+            "key": "mode",
+            "kind": "select",
+            "label": "Mode",
+            "options": [
+              { "value": "a", "label": { "zh": "甲", "en": "A" } },
+              { "value": "b", "label": { "zh": "乙", "en": "B" } }
+            ]
+          },
+          { "key": "note", "kind": "text", "label": "Note" },
+          { "key": "art", "kind": "image", "label": { "zh": "图片", "en": "Image" } }
+        ]
+      }
+    }
+  }
+}

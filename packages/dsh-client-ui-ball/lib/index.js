@@ -20,15 +20,22 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import z from '@deepseek-ai/schemastery'
+import { collectBallModules } from './modules.js'
 
 /** Cordis plugin name. */
 export const name = 'ui-ball'
+
+/** Version of the `dsh.ball` contract this package serves and consumes. */
+export const BALL_PROTOCOL = 1
 
 /** Settings namespace owned by this plugin. Durable sections live in `$DSH_HOME/settings.yaml`. */
 export const BALL_NAMESPACE = 'ui-ball'
 
 /** Path the local mascot route answers on; the browser half requests exactly this. */
 export const MASCOT_ROUTE = '/ui-ball/mascot'
+
+/** Path the ball module directory answers on. */
+export const MODULE_ROUTE = '/ui-ball/modules'
 
 /** Directory beside this package holding an optional local mascot. */
 export const MASCOT_DIRECTORY = fileURLToPath(new URL('../assets/', import.meta.url))
@@ -124,20 +131,52 @@ async function serveMascot(req, res) {
 }
 
 /**
- * Host plugin body: serve the ball's settings namespace and its local mascot
- * route. `ctx.inject` rather than a hard `inject` export keeps the ball usable
- * in a composition without either service — the browser half then falls back to
- * its own local store and its built-in art.
+ * Serve the current ball module directory. `no-cache` is deliberate: enabling
+ * or disabling a plugin changes this listing, and the ball refetches it.
+ * @param {import('node:http').IncomingMessage} req - the request.
+ * @param {import('node:http').ServerResponse} res - the response.
+ * @param {object} loader - the cordis Loader, read at request time.
+ */
+async function serveModules(req, res, loader) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { allow: 'GET, HEAD' })
+    res.end()
+    return
+  }
+  const body = Buffer.from(`${JSON.stringify({ protocol: BALL_PROTOCOL, modules: collectBallModules(loader) })}\n`, 'utf8')
+  res.writeHead(200, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': body.byteLength,
+    'cache-control': 'no-cache',
+  })
+  res.end(req.method === 'HEAD' ? undefined : body)
+}
+
+/**
+ * Host plugin body: serve the ball's settings namespace, its local mascot, and
+ * the ball module directory. `ctx.inject` rather than a hard `inject` export
+ * keeps the ball usable in a composition without those services — the browser
+ * half then falls back to its own local store, its built-in art, and live
+ * registrations alone.
  * @param {import('@deepseek-ai/cordis').Context} ctx - host cordis context.
  */
 export function apply(ctx) {
   ctx.inject(['settings'], (settingsCtx) => {
     settingsCtx.settings.register(BALL_NAMESPACE, BallSettingsSchema)
   })
-  ctx.inject(['webServer'], (webCtx) => {
+  ctx.inject(['loader', 'webServer'], (webCtx) => {
+    const loader = webCtx.loader
     webCtx.effect(
       () => webCtx.webServer.register({ kind: 'exact', path: MASCOT_ROUTE, handler: serveMascot }),
       'ui-ball: local mascot route',
+    )
+    webCtx.effect(
+      () => webCtx.webServer.register({
+        kind: 'exact',
+        path: MODULE_ROUTE,
+        handler: (req, res) => serveModules(req, res, loader),
+      }),
+      'ui-ball: module directory route',
     )
   })
 }

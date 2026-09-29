@@ -1,0 +1,13 @@
+{
+  "name": "@fixture/bad",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "dsh": {
+    "ball": {
+      "id": "Not An Identifier",
+      "title": "Broken module"
+    }
+  }
+}

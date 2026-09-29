@@ -16,6 +16,7 @@
 import { rmSync, writeFileSync, mkdirSync, readFileSync, existsSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import { register } from 'node:module'
+import { pathToFileURL } from 'node:url'
 
 register('./schemastery-loader.mjs', import.meta.url)
 
@@ -29,6 +30,8 @@ const plugin = await import('../packages/dsh-client-ui-ball/lib/index.js')
 // ── the module's declared surface ───────────────────────────────────────────
 check('exports name/apply', plugin.name === 'ui-ball' && typeof plugin.apply === 'function')
 check('declares the mascot route', plugin.MASCOT_ROUTE === '/ui-ball/mascot', String(plugin.MASCOT_ROUTE))
+check('declares the module directory route', plugin.MODULE_ROUTE === '/ui-ball/modules', String(plugin.MODULE_ROUTE))
+check('publishes the protocol version', plugin.BALL_PROTOCOL === 1, String(plugin.BALL_PROTOCOL))
 check('prefers svg, then webp, then png, then jpeg, then gif',
   plugin.MASCOT_FILES.map(entry => entry[0]).join() ===
   'mascot.svg,mascot.webp,mascot.png,mascot.jpeg,mascot.jpg,mascot.gif',
@@ -36,6 +39,36 @@ check('prefers svg, then webp, then png, then jpeg, then gif',
 check('the mascot directory resolves beside the package',
   plugin.MASCOT_DIRECTORY.endsWith('dsh-client-ui-ball/assets/') || plugin.MASCOT_DIRECTORY.endsWith('dsh-client-ui-ball\\assets\\'),
   plugin.MASCOT_DIRECTORY)
+
+// ── a virtual loader over the fixture packages ──────────────────────────────
+// `resolveSync` maps a specifier to the fixture's entry file, which is exactly
+// what the real Loader hands the scanner; the walk from there to the nearest
+// manifest is the code under test.
+const fixtureEntry = name => pathToFileURL(join(process.cwd(), 'test', 'fixtures', name, 'index.js')).href
+const resolvable = {
+  '@fixture/good': fixtureEntry('good'),
+  '@fixture/bad': fixtureEntry('bad'),
+  '@fixture/plain': fixtureEntry('plain'),
+}
+let rows = []
+const loader = {
+  internal: {
+    version: 'v1',
+    resolveSync(specifier) {
+      const url = resolvable[specifier]
+      if (url === undefined) throw new Error(`unresolvable: ${specifier}`)
+      return { url }
+    },
+  },
+  entries: () => rows,
+}
+const row = (specifier, rowId, { disabled = false, active = true } = {}) => ({
+  id: `include:${rowId}`,
+  options: { name: specifier, id: rowId },
+  disabled,
+  fiber: active ? {} : undefined,
+  parent: { tree: { ctx: { baseUrl: 'file:///virtual/profile/' } } },
+})
 
 // ── capture the registrations apply() makes ─────────────────────────────────
 const namespaces = []
@@ -46,6 +79,7 @@ const makeCtx = () => ({
     const list = Array.isArray(services) ? services : [services]
     if (list.includes('webServer')) {
       callback({
+        loader,
         effect: (body, label) => { effects.push(label); return body() },
         webServer: { register: (route) => { routes.push(route); return () => {} } },
       })
@@ -58,19 +92,27 @@ const makeCtx = () => ({
 
 plugin.apply(makeCtx())
 check('registers the ui-ball settings namespace', namespaces.join() === 'ui-ball', namespaces.join())
-check('registers exactly one route', routes.length === 1, String(routes.length))
-check('the route is exact and carries the published path',
-  routes[0]?.kind === 'exact' && routes[0]?.path === '/ui-ball/mascot',
-  `${routes[0]?.kind} ${routes[0]?.path}`)
-check('the route is owned by an effect', effects.length === 1, effects.join())
+check('registers the mascot route and the directory route',
+  routes.map(route => route.path).sort().join() === '/ui-ball/mascot,/ui-ball/modules',
+  routes.map(route => route.path).join())
+check('both routes are exact',
+  routes.every(route => route.kind === 'exact'), routes.map(route => route.kind).join())
+check('each route is owned by an effect', effects.length === 2, effects.join())
 
-const serve = routes[0].handler
+const serve = routes.find(route => route.path === plugin.MASCOT_ROUTE).handler
+const serveModules = routes.find(route => route.path === plugin.MODULE_ROUTE).handler
 const request = (method) => ({ method })
 const response = () => {
   const res = { status: undefined, headers: undefined, body: undefined }
   res.writeHead = (status, headers) => { res.status = status; res.headers = headers ?? {} }
   res.end = (body) => { res.body = body }
   return res
+}
+/** Read the directory the way the browser half will. */
+const directory = async () => {
+  const res = response()
+  await serveModules(request('GET'), res)
+  return { res, json: JSON.parse(res.body.toString('utf8')) }
 }
 
 // ── the shipped mascot, then the empty-directory case ───────────────────────
@@ -172,6 +214,76 @@ try {
     rmSync(SHIPPED, { force: true })
     renameSync(HELD, SHIPPED)
   }
+}
+
+// ── the module directory ────────────────────────────────────────────────────
+rows = [row('@fixture/good', 'good'), row('@fixture/bad', 'bad'), row('@fixture/plain', 'plain')]
+{
+  const { res, json } = await directory()
+  check('the directory answers JSON', res.status === 200 && String(res.headers['content-type']).startsWith('application/json'),
+    `${res.status} ${res.headers?.['content-type']}`)
+  check('the directory is never cached', res.headers['cache-control'] === 'no-cache', String(res.headers['cache-control']))
+  check('it publishes the protocol version', json.protocol === 1, String(json.protocol))
+  check('it lists only rows that declare dsh.ball',
+    json.modules.map(module => module.rowId).join() === 'good,bad', json.modules.map(module => module.rowId).join())
+
+  const good = json.modules.find(module => module.rowId === 'good')
+  check('a declaration is normalized with its package', good.id === 'fixture-good' && good.package === '@fixture/good')
+  check('title and description arrive as locale pairs',
+    good.title.zh === '完好的模块' && good.title.en === 'Well-formed module' && good.description.zh === '用于验证目录扫描')
+  check('icon and order survive', good.icon === '★' && good.order === 3)
+  check('the management key is the loader entry id', good.entryId === 'include:good', String(good.entryId))
+  check('an active row reports enabled and active', good.enabled === true && good.active === true)
+
+  check('the settings namespace is carried', good.settings.namespace === 'fixture-good')
+  const fields = good.settings.fields
+  check('every declared field kind is accepted',
+    fields.map(field => `${field.key}:${field.kind}`).join() === 'enabled:toggle,level:range,mode:select,note:text,art:image',
+    fields.map(field => `${field.key}:${field.kind}`).join())
+  const level = fields.find(field => field.key === 'level')
+  check('a range carries its bounds, step and unit',
+    level.min === 0 && level.max === 10 && level.step === 2 && level.unit === '级',
+    JSON.stringify(level))
+  check('a plain-string label becomes both locales', fields.find(field => field.key === 'note').label.zh === 'Note')
+  check('a select carries normalized options',
+    fields.find(field => field.key === 'mode').options.map(option => option.value).join() === 'a,b')
+
+  const bad = json.modules.find(module => module.rowId === 'bad')
+  check('a malformed declaration is listed with its problem, not hidden',
+    typeof bad.problem === 'string' && bad.problem.includes('lowercase hyphenated identifier'), String(bad.problem))
+  check('a malformed declaration still reports its row', bad.rowId === 'bad' && bad.id === undefined)
+}
+
+{
+  rows = [row('@fixture/good', 'good', { disabled: true, active: false })]
+  const { json } = await directory()
+  const disabled = json.modules[0]
+  check('a disabled row is still listed', disabled !== undefined)
+  check('a disabled row reports enabled=false and active=false',
+    disabled?.enabled === false && disabled?.active === false, JSON.stringify(disabled))
+}
+
+{
+  rows = [row('@fixture/unknown', 'unknown'), row('@fixture/plain', 'plain')]
+  const { json } = await directory()
+  check('rows that resolve to no package, or declare no ball block, are skipped',
+    json.modules.length === 0, JSON.stringify(json.modules))
+}
+
+{
+  rows = [{ id: 'group', options: { id: 'group', group: true }, parent: { tree: { ctx: {} } } }]
+  const { json } = await directory()
+  check('a group row is skipped', json.modules.length === 0, JSON.stringify(json.modules))
+}
+
+{
+  const write = response()
+  await serveModules(request('POST'), write)
+  check('the directory rejects writes with 405',
+    write.status === 405 && write.headers.allow === 'GET, HEAD', `${write.status} ${write.headers?.allow}`)
+  const head = response()
+  await serveModules(request('HEAD'), head)
+  check('the directory answers HEAD without a body', head.status === 200 && head.body === undefined)
 }
 
 // ── report ──────────────────────────────────────────────────────────────────

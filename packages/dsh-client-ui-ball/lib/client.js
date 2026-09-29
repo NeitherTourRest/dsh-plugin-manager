@@ -54,6 +54,13 @@ window.__ModuleLoader__.load({
     const LOCAL_MASCOT_URL = '/ui-ball/mascot'
 
     /**
+     * Route the Host half serves the `dsh.ball` directory on. The ball lists
+     * every declared module from here, including plugins whose own client half
+     * is switched off.
+     */
+    const MODULE_DIRECTORY_URL = '/ui-ball/modules'
+
+    /**
      * Local mascot state for this plugin run: `unknown` until the one probe
      * settles, then `present` (the asset is the default artwork) or `absent`
      * (the built-in art stays). Shared with the configuration card so the ball
@@ -259,6 +266,25 @@ window.__ModuleLoader__.load({
 .entry:focus-visible { outline: 2px solid #6ea8fe; outline-offset: -2px; }
 .entry__icon { width: 20px; flex: 0 0 auto; text-align: center; font-size: 15px; line-height: 1; }
 .entry__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entry__state {
+  flex: 0 0 auto; padding: 1px 6px; border-radius: 999px; font-size: 10px; line-height: 1.6;
+  background: rgba(255, 255, 255, 0.1); color: #a9adb4;
+}
+.entry__state[data-state='problem'] { background: rgba(229, 83, 75, 0.22); color: #ffb4ae; }
+.entry__state[data-state='off'] { background: rgba(255, 255, 255, 0.14); color: #d7dade; }
+
+/* Generic settings form, rendered from a module's declared fields. */
+.field { display: grid; grid-template-columns: 76px 1fr 46px; align-items: center; gap: 8px; margin: 7px 0; }
+.field > span { color: #b9bdc4; }
+.field output { text-align: right; color: #8f949c; font-variant-numeric: tabular-nums; }
+.field input[type='range'] { width: 100%; margin: 0; accent-color: #6ea8fe; }
+.field select, .field input[type='text'] {
+  width: 100%; padding: 4px 6px; border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06); color: #eceef1; font-size: 12px;
+}
+.field select:focus-visible, .field input[type='text']:focus-visible { outline: 2px solid #6ea8fe; outline-offset: 1px; }
+
+.notice { margin: 4px 0 10px; color: #a9adb4; font-size: 12px; line-height: 1.6; }
 
 .body { padding: 0 12px 13px; overflow-y: auto; }
 .body[hidden] { display: none; }
@@ -484,6 +510,9 @@ window.__ModuleLoader__.load({
      */
     function apply(ctx) {
       const settings = createSettings(ctx)
+      // Read lazily: the locale service arrives through its own inject, and the
+      // directory can render before it does.
+      const localeService = ctx.get('locale')
 
       // Registered panels, in registration order; `order` breaks ties and a
       // monotonic sequence keeps removal from reusing an earlier position.
@@ -523,8 +552,103 @@ window.__ModuleLoader__.load({
       let lastImage = null
       let drag = null
 
+      /**
+       * The `dsh.ball` directory served by this package's Host half. A module
+       * appears here whether or not its client half is running, which is what
+       * lets the ball list and manage a plugin it has never heard from.
+       */
+      let directory = { protocol: 0, modules: [], loaded: false, error: null }
+      const directoryListeners = new Set()
+      const notifyDirectory = () => { for (const listener of [...directoryListeners]) listener() }
+
+      /** Namespace bindings, one per declared module, created on first use. */
+      const bindings = new Map()
+
+      /**
+       * Resolve a localized pair against the active language, preferring the
+       * dictionary's own locale when it is a Chinese or English build.
+       * @param {{ zh: string, en: string } | undefined} pair - the declared pair.
+       * @param {string} fallback - used when the pair is absent.
+       * @returns {string} the text to render.
+       */
+      const localize = (pair, fallback) => {
+        if (pair === undefined) return fallback
+        return localeIsEnglish() ? pair.en : pair.zh
+      }
+
+      /** @returns {boolean} whether the product is currently showing English copy. */
+      const localeIsEnglish = () => {
+        const id = localeService === undefined ? 'zh' : localeService.getSnapshot().locale
+        return typeof id === 'string' && id.toLowerCase().startsWith('en')
+      }
+
+      /** Re-read the directory. Cheap, uncached, and safe to call after any management action. */
+      const loadDirectory = async () => {
+        try {
+          const response = await fetch(MODULE_DIRECTORY_URL, { headers: { accept: 'application/json' } })
+          if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+          const body = await response.json()
+          if (typeof body !== 'object' || body === null || !Array.isArray(body.modules)) {
+            throw new Error('malformed directory')
+          }
+          directory = { protocol: Number(body.protocol) || 0, modules: body.modules, loaded: true, error: null }
+        } catch (error) {
+          // A composition without the Host route simply has no directory; the
+          // ball still works from live registrations alone.
+          directory = { protocol: 0, modules: [], loaded: false, error: String(error) }
+        }
+        notifyDirectory()
+      }
+
+      /**
+       * The panel list: declared modules merged with live self-registrations.
+       *
+       * A live registration wins on presentation — it can render anything — but
+       * a declared module that never registered still appears, carrying its
+       * state, so the ball can say "installed but switched off" instead of
+       * showing nothing.
+       *
+       * @returns {object[]} records in render order.
+       */
+      const models = () => {
+        const merged = new Map()
+        for (const module of directory.modules) {
+          if (typeof module?.id !== 'string') continue
+          merged.set(module.id, {
+            id: module.id,
+            title: localize(module.title, module.id),
+            icon: typeof module.icon === 'string' ? module.icon : '',
+            order: Number.isFinite(module.order) ? module.order : 0,
+            descriptor: module,
+            live: undefined,
+            problem: typeof module.problem === 'string' ? module.problem : undefined,
+            seq: merged.size,
+          })
+        }
+        for (const entry of entries.values()) {
+          const known = merged.get(entry.id)
+          if (known === undefined) {
+            merged.set(entry.id, {
+              id: entry.id,
+              title: labelOf(entry),
+              icon: entry.icon ?? '',
+              order: entry.order,
+              descriptor: undefined,
+              live: entry,
+              problem: undefined,
+              seq: sequence,
+            })
+          } else {
+            known.live = entry
+            known.order = entry.order
+            if (entry.icon !== undefined) known.icon = entry.icon
+          }
+        }
+        return [...merged.values()].sort((left, right) => left.order - right.order || left.seq - right.seq)
+      }
+
       /** Panels in render order. */
-      const sorted = () => [...entries.values()].sort((left, right) => left.order - right.order || left.seq - right.seq)
+      const sorted = () => models()
 
       /**
        * Resolve an entry's label, which may be a string or a locale-bound function.
@@ -603,43 +727,139 @@ window.__ModuleLoader__.load({
       }
 
       /**
-       * Show one registered panel, replacing whatever was shown.
-       * @param {string} id - the panel's registration id.
+       * The profile's plugin manager Remote, when this composition has one.
+       * Read lazily: the namespace is mounted by `@deepseek-ai/dsh-api-remotes`,
+       * which a composition may omit.
+       * @returns {object | undefined} the manager namespace.
        */
+      const manager = () => {
+        const remote = ctx.get('remote')
+        return remote === undefined ? undefined : remote.pluginManager
+      }
+
+      /**
+       * Switch one loader row on or off through the profile's plugin manager.
+       * @param {string} entryId - the row's loader entry id.
+       * @param {boolean} enabled - the state to write.
+       */
+      const setRowEnabled = async (entryId, enabled) => {
+        const api = manager()
+        if (api === undefined) return
+        const result = await api.setPluginEnabled(entryId, enabled)
+        if (result.ok !== true) {
+          console.error(`[${PLUGIN_ID}] could not switch ${entryId}: ${String(result.error?.code)} ${String(result.error?.message)}`)
+        }
+        await loadDirectory()
+      }
+
+      /** The management bar shown above a declared module's panel. */
+      const managementBar = (model) => {
+        const descriptor = model.descriptor
+        if (descriptor === undefined || typeof descriptor.entryId !== 'string') return null
+        if (manager() === undefined) return null
+        const bar = document.createElement('div')
+        bar.className = 'actions'
+        const off = descriptor.enabled === false
+        const toggle = document.createElement('button')
+        toggle.type = 'button'
+        toggle.textContent = off
+          ? localize({ zh: '启用这个插件', en: 'Enable this plugin' }, 'Enable')
+          : localize({ zh: '停用这个插件', en: 'Disable this plugin' }, 'Disable')
+        toggle.addEventListener('click', () => { void setRowEnabled(descriptor.entryId, off) })
+        bar.append(toggle)
+        return bar
+      }
+
+      /** Open one module's panel, or explain why it has none. */
       const activate = (id) => {
         deactivate()
-        const entry = entries.get(id)
-        if (entry === undefined) return
+        const model = sorted().find(candidate => candidate.id === id)
+        if (model === undefined) return
         activeId = id
-        title.textContent = labelOf(entry)
+        title.textContent = model.title
         menu.hidden = true
         empty.hidden = true
         body.hidden = false
         back.hidden = sorted().length < 2
+
+        const bar = managementBar(model)
+        if (bar !== null) body.append(bar)
+
+        const note = (text) => {
+          const message = document.createElement('p')
+          message.className = 'notice'
+          message.textContent = text
+          body.append(message)
+        }
+
         try {
-          const dispose = entry.render(body, { close })
-          disposeActive = typeof dispose === 'function' ? dispose : null
+          if (model.live !== undefined && typeof model.live.render === 'function') {
+            const dispose = model.live.render(body, { close })
+            disposeActive = typeof dispose === 'function' ? dispose : null
+            return
+          }
+          // No live panel, but the declaration carries a settings schema: the
+          // ball renders it. This is the whole point of the protocol — a plugin
+          // that ships no form code still gets a working one.
+          const declaration = model.descriptor?.settings
+          if (declaration !== undefined) {
+            const binding = bindings.get(id) ?? bindModuleSettings(ctx, declaration)
+            bindings.set(id, binding)
+            const dispose = createForm(body, {
+              fields: declaration.fields,
+              settings: binding,
+              localize,
+            })
+            const reset = document.createElement('div')
+            reset.className = 'actions'
+            disposeActive = () => { dispose(); reset.remove() }
+            return
+          }
+          if (model.problem !== undefined) note(model.problem)
+          else if (model.descriptor !== undefined) {
+            note(localize({ zh: '这个模块没有声明设置项，也没有提供面板。', en: 'This module declares no settings and provides no panel.' }, 'no panel'))
+          } else {
+            note(translate('empty'))
+          }
         } catch (error) {
           console.error(`[${PLUGIN_ID}] panel "${id}" failed to render`, error)
           body.textContent = String(error)
         }
       }
 
-      /** Rebuild the entry list from the registry. */
+      /** Rebuild the module list from the directory merged with live registrations. */
       const renderMenu = () => {
         menu.textContent = ''
-        for (const entry of sorted()) {
+        for (const model of sorted()) {
           const item = document.createElement('button')
           item.type = 'button'
           item.className = 'entry'
-          item.dataset.entry = entry.id
+          item.dataset.entry = model.id
           const icon = document.createElement('span')
           icon.className = 'entry__icon'
-          icon.textContent = typeof entry.icon === 'string' && entry.icon !== '' ? entry.icon : '•'
+          icon.textContent = model.icon !== '' ? model.icon : '•'
           const label = document.createElement('span')
           label.className = 'entry__label'
-          label.textContent = labelOf(entry)
+          label.textContent = model.title
           item.append(icon, label)
+          // A declared module the composition is not running is still listed;
+          // saying so is the difference between a settings list and a manager.
+          const state = model.problem !== undefined ? 'problem'
+            : model.descriptor !== undefined && model.descriptor.enabled === false ? 'off'
+              : model.descriptor !== undefined && model.descriptor.active === false ? 'idle'
+                : model.live === undefined && model.descriptor !== undefined ? 'idle'
+                  : 'on'
+          if (state !== 'on') {
+            const chip = document.createElement('span')
+            chip.className = 'entry__state'
+            chip.dataset.state = state
+            chip.textContent = state === 'off'
+              ? localize({ zh: '已停用', en: 'Off' }, 'Off')
+              : state === 'problem'
+                ? localize({ zh: '声明有误', en: 'Invalid' }, 'Invalid')
+                : localize({ zh: '未加载', en: 'Not loaded' }, 'Not loaded')
+            item.append(chip)
+          }
           menu.append(item)
         }
       }
@@ -712,9 +932,14 @@ window.__ModuleLoader__.load({
             notify()
           }
         },
-        /** @returns {Array<{ id: string, label: string, icon: string }>} the registered panels, in render order. */
+        /**
+         * Every panel the ball offers, in render order: declared modules merged
+         * with live registrations, so a plugin whose client half is switched off
+         * is still reported.
+         * @returns {Array<{ id: string, label: string, icon: string }>} the panels.
+         */
         entries() {
-          return sorted().map(entry => ({ id: entry.id, label: labelOf(entry), icon: entry.icon ?? '' }))
+          return sorted().map(model => ({ id: model.id, label: model.title, icon: model.icon ?? '' }))
         },
         /**
          * Observe registry changes.
@@ -783,6 +1008,12 @@ window.__ModuleLoader__.load({
       const onResize = () => { place() }
       window.addEventListener('resize', onResize)
       const unsubscribeSettings = settings.subscribe(renderAppearance)
+      // A directory change is a menu change; the surface repaints if it is
+      // showing the list.
+      directoryListeners.add(() => {
+        renderMenu()
+        if (!surface.hidden && activeId === null) open()
+      })
 
       ctx.effect(() => {
         const parent = document.body ?? document.documentElement
@@ -796,6 +1027,8 @@ window.__ModuleLoader__.load({
         probe.addEventListener('load', () => { localMascot = 'present'; renderAppearance() })
         probe.addEventListener('error', () => { localMascot = 'absent'; renderAppearance() })
         probe.src = LOCAL_MASCOT_URL
+        // The declared-module directory is the other half of the menu.
+        void loadDirectory()
         return () => {
           hostStyleTag.remove()
           host.remove()
@@ -804,12 +1037,25 @@ window.__ModuleLoader__.load({
           deactivate()
           entries.clear()
           watchers.clear()
+          bindings.clear()
         }
       }, 'ui-ball: mascot and panel surface')
 
       // Provided during apply, so a plugin that injects `ball` is ordered after
       // this one regardless of composition order.
       ctx.provide(SERVICE, service)
+
+      // The manager announces its own changes; a reconnect may have changed the
+      // composition without an announcement, so both refresh the directory.
+      ctx.effect(() => {
+        const remote = ctx.get('remote')
+        const disposers = []
+        if (remote !== undefined && typeof remote.$on === 'function') {
+          disposers.push(remote.$on('plugin-manager/changed', () => { void loadDirectory() }))
+        }
+        disposers.push(ctx.on('connection/reset', () => { void loadDirectory() }))
+        return () => { for (const dispose of disposers) dispose() }
+      }, 'ui-ball: directory invalidation')
 
       ctx.inject(['locale'], (localeCtx) => {
         localeCtx.effect(() => localeCtx.locale.register(LOCALE_NS, STRINGS), 'ui-ball: dictionaries')
@@ -825,6 +1071,224 @@ window.__ModuleLoader__.load({
       })
 
       registerConfigCard(ctx, settings)
+    }
+
+    /**
+     * Synthesize the value a declared field shows before the Host answers.
+     * @param {object} field - one declared field.
+     * @returns {unknown} the first-paint value.
+     */
+    function fieldDefault(field) {
+      if (field.kind === 'toggle') return false
+      if (field.kind === 'range') return field.min
+      if (field.kind === 'select') return field.options[0]?.value ?? ''
+      return ''
+    }
+
+    /**
+     * Bind one declared module's settings namespace.
+     *
+     * Unlike this plugin's own settings there is no local mirror and no
+     * migration here: the namespace belongs to another plugin, whose own client
+     * half owns its durable value. The ball only reads and writes it.
+     *
+     * @param {object} ctx - the client Cordis context.
+     * @param {object} declaration - the module's `settings` declaration.
+     * @returns {object} a reader/writer over the namespace.
+     */
+    function bindModuleSettings(ctx, declaration) {
+      const fields = declaration.fields
+      const defaults = Object.fromEntries(fields.map(field => [field.key, fieldDefault(field)]))
+      const listeners = new Set()
+      const service = ctx.get('settingsScope')
+      const scope = service === undefined ? null : service.bind({ namespace: declaration.namespace })
+
+      const read = () => {
+        if (scope === null) return { ...defaults }
+        const snapshot = scope.getSnapshot()
+        const section = snapshot.status === 'ready' ? snapshot.value : undefined
+        if (typeof section !== 'object' || section === null) return { ...defaults }
+        const values = { ...defaults }
+        for (const field of fields) {
+          const value = section[field.key]
+          if (typeof value === typeof defaults[field.key]) values[field.key] = value
+        }
+        return values
+      }
+
+      if (scope !== null) {
+        ctx.effect(() => scope.subscribe(() => { for (const listener of [...listeners]) listener() }),
+          `ui-ball: ${declaration.namespace} settings`)
+      }
+
+      return {
+        read,
+        /** @returns {boolean} whether the namespace accepts writes at all. */
+        writable: () => scope !== null && scope.getSnapshot().writable === true,
+        subscribe(listener) {
+          listeners.add(listener)
+          return () => { listeners.delete(listener) }
+        },
+        write(key, value) {
+          if (scope === null) return
+          void scope.set(key, value).catch((error) => {
+            console.error(`[${PLUGIN_ID}] could not write ${declaration.namespace}.${key}`, error)
+          })
+        },
+        reset() {
+          if (scope === null) return
+          void Promise.all(fields.map(field => scope.unset(field.key).catch(() => {}))).catch((error) => {
+            console.error(`[${PLUGIN_ID}] could not reset ${declaration.namespace}`, error)
+          })
+        },
+      }
+    }
+
+    /**
+     * Render a settings form from a module's declared fields.
+     *
+     * This is what makes the protocol worth having: a plugin declares its fields
+     * in `package.json` and gets the same control surface as every other ball
+     * module, with no form code of its own.
+     *
+     * @param {HTMLElement} container - where the form is mounted.
+     * @param {{ fields: object[], settings: object, localize: (pair: object | undefined, fallback: string) => string }} deps - declaration and namespace binding.
+     * @returns {() => void} disposer removing the form and its subscription.
+     */
+    function createForm(container, deps) {
+      const { fields, settings } = deps
+      const controls = new Map()
+      const outputs = new Map()
+
+      for (const field of fields) {
+        const row = document.createElement('label')
+        row.className = 'field'
+        const caption = document.createElement('span')
+        caption.textContent = deps.localize(field.label, field.key)
+        row.append(caption)
+
+        let control
+        if (field.kind === 'select') {
+          control = document.createElement('select')
+          for (const option of field.options) {
+            const element = document.createElement('option')
+            element.value = option.value
+            element.textContent = deps.localize(option.label, option.value)
+            control.append(element)
+          }
+        } else if (field.kind === 'toggle') {
+          control = document.createElement('input')
+          control.type = 'checkbox'
+        } else if (field.kind === 'range') {
+          control = document.createElement('input')
+          control.type = 'range'
+          control.min = String(field.min)
+          control.max = String(field.max)
+          control.step = String(field.step)
+        } else {
+          control = document.createElement('input')
+          control.type = 'text'
+          control.spellcheck = false
+          if (field.kind === 'image' && typeof field.hint === 'object') {
+            control.placeholder = deps.localize(field.hint, '')
+          }
+        }
+        control.dataset.field = field.key
+        row.append(control)
+
+        const output = document.createElement('output')
+        row.append(output)
+        outputs.set(field.key, { output, field })
+
+        // `input` previews locally; `change` fires once the gesture ends, which
+        // is the only point that should reach the settings wire.
+        control.addEventListener('input', () => { apply(field, control, false) })
+        control.addEventListener('change', () => { apply(field, control, true) })
+
+        controls.set(field.key, control)
+        container.append(row)
+
+        // An image field is a URL box plus a local picker that stores a data URI.
+        if (field.kind === 'image') {
+          const bar = document.createElement('div')
+          bar.className = 'actions'
+          const pick = document.createElement('button')
+          pick.type = 'button'
+          pick.textContent = deps.localize({ zh: '选择图片', en: 'Choose image' }, 'Choose image')
+          const clear = document.createElement('button')
+          clear.type = 'button'
+          clear.textContent = deps.localize({ zh: '清除', en: 'Clear' }, 'Clear')
+          bar.append(pick, clear)
+          const picker = document.createElement('input')
+          picker.type = 'file'
+          picker.accept = 'image/*'
+          picker.hidden = true
+          container.append(bar, picker)
+          pick.addEventListener('click', () => { picker.value = ''; picker.click() })
+          clear.addEventListener('click', () => { settings.write(field.key, '') })
+          picker.addEventListener('change', () => {
+            const file = picker.files?.[0]
+            picker.value = ''
+            if (file === undefined) return
+            void fileToDataUrl(file, IMAGE_MAX_EDGE)
+              .then((dataUrl) => { settings.write(field.key, dataUrl) })
+              .catch((error) => { console.error(`[${PLUGIN_ID}] could not read the picked image`, error) })
+          })
+        }
+      }
+
+      const reset = document.createElement('div')
+      reset.className = 'actions'
+      const resetButton = document.createElement('button')
+      resetButton.type = 'button'
+      resetButton.textContent = deps.localize({ zh: '恢复默认', en: 'Reset to defaults' }, 'Reset to defaults')
+      resetButton.addEventListener('click', () => { settings.reset() })
+      reset.append(resetButton)
+      container.append(reset)
+
+      /** @param {object} field - the field, @param {HTMLElement} control - its control, @param {boolean} durable - whether to write. */
+      const apply = (field, control, durable) => {
+        if (!durable) { sync(); return }
+        settings.write(field.key, read(control, field))
+      }
+
+      /** Push the namespace value into every control and readout. */
+      const sync = () => {
+        const values = settings.read()
+        for (const [key, control] of controls) {
+          const value = values[key]
+          if (control.type === 'checkbox') control.checked = value === true
+          else if (control.type === 'range' || control.tagName === 'SELECT') control.value = String(value)
+          // A text box keeps whatever is being typed: a shadow-root input
+          // reports its host as document.activeElement.
+          else if (container.getRootNode().activeElement !== control) control.value = String(value)
+          const entry = outputs.get(key)
+          if (entry === undefined) continue
+          if (entry.field.kind === 'range') entry.output.textContent = `${String(value)}${entry.field.unit ?? ''}`
+          else if (entry.field.kind === 'toggle') entry.output.textContent = value === true ? '✓' : ''
+          else entry.output.textContent = ''
+        }
+      }
+
+      const unsubscribe = settings.subscribe(sync)
+      sync()
+
+      return () => {
+        unsubscribe()
+        container.textContent = ''
+      }
+    }
+
+    /**
+     * Read one control's value in the field's own type.
+     * @param {HTMLElement} control - the control.
+     * @param {object} field - its declaration.
+     * @returns {unknown} the value to persist.
+     */
+    function read(control, field) {
+      if (field.kind === 'toggle') return control.checked
+      if (field.kind === 'range') return Number(control.value)
+      return control.value
     }
 
     /**
@@ -954,16 +1418,17 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * Downscale a picked image to a mascot-sized data URI. WebP keeps the alpha
-     * a round mascot needs at a fraction of PNG's size, and the durable
-     * settings document is YAML, so size matters.
+     * Downscale a picked image to a data URI. WebP keeps the alpha a round
+     * mascot needs at a fraction of PNG's size, and the durable settings
+     * document is YAML, so size matters.
      * @param {File} file - the file the user chose.
+     * @param {number} maxEdge - longest edge to keep, in px.
      * @returns {Promise<string>} the encoded image.
      */
-    async function fileToDataUrl(file) {
+    async function fileToDataUrl(file, maxEdge) {
       const bitmap = await createImageBitmap(file)
       try {
-        const scale = Math.min(1, IMAGE_MAX_EDGE / Math.max(bitmap.width, bitmap.height))
+        const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height))
         const width = Math.max(1, Math.round(bitmap.width * scale))
         const height = Math.max(1, Math.round(bitmap.height * scale))
         const canvas = document.createElement('canvas')

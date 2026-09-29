@@ -23,6 +23,37 @@
     },
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "ball": {
+      "id": "ui-ball",
+      "title": { "zh": "悬浮球外观", "en": "Ball appearance" },
+      "description": { "zh": "形象、大小、透明度、动效", "en": "Artwork, size, opacity, motion" },
+      "icon": "🐳",
+      "order": 0,
+      "settings": {
+        "namespace": "ui-ball",
+        "fields": [
+          {
+            "key": "image",
+            "kind": "image",
+            "label": { "zh": "形象", "en": "Artwork" },
+            "hint": { "zh": "留空时用 assets/mascot.* 或所选形象包；也可填图片 URL 或一个表情符号", "en": "Empty uses assets/mascot.* or the selected pack; a URL or a single emoji also works" }
+          },
+          { "key": "size", "kind": "range", "min": 28, "max": 96, "step": 1, "unit": "px", "label": { "zh": "大小", "en": "Size" } },
+          { "key": "opacity", "kind": "range", "min": 20, "max": 100, "step": 1, "unit": "%", "label": { "zh": "透明度", "en": "Opacity" } },
+          {
+            "key": "motion",
+            "kind": "select",
+            "label": { "zh": "动效", "en": "Motion" },
+            "options": [
+              { "value": "breathe", "label": { "zh": "呼吸", "en": "Breathe" } },
+              { "value": "sway", "label": { "zh": "摇摆", "en": "Sway" } },
+              { "value": "none", "label": { "zh": "静止", "en": "Still" } }
+            ]
+          },
+          { "key": "surfaceWidth", "kind": "range", "min": 240, "max": 480, "step": 1, "unit": "px", "label": { "zh": "面板宽度", "en": "Panel width" } }
+        ]
+      }
     }
   },
   "peerDependencies": {
