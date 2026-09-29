@@ -166,7 +166,7 @@ CC 的 ShareAlike **不会传染到代码**——图片与代码是彼此独立�
 ## 六、验证
 
 ```sh
-node test/verify-ball.mjs        # 51 项：协议、服务、形象与本地素材探测、拖动、面板托管、卡片、卸载
+node test/verify-ball.mjs        # 56 项：协议、服务、形象与本地素材探测、设置采纳与上迁、拖动、面板托管、卡片、卸载
 node test/verify-ball-host.mjs   # 27 项：Host 半边的形象路由（自带素材、优先级、405、404、HEAD）
 node test/verify-together.mjs    # 15 项：与 dsh-client-ui-glass 的真实交叉集成
 ```

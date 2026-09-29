@@ -122,11 +122,12 @@ Host 半边用 `ctx.settings.register('ui-glass', schema)` 注册命名空间，
 ## 六、验证
 
 ```sh
-node test/verify-glass.mjs       # 59 项：两种宿主形态、主题层、面板、卡片、卸载
+node test/verify-glass.mjs       # 67 项：两种宿主形态、升级路径、主题层、面板、卡片、卸载
 node test/verify-together.mjs    # 15 项：与悬浮球的真实交叉集成
 ```
 
-`verify-glass.mjs` 会加载两次：一次带球、一次不带球，确保降级路径同样可用。
+`verify-glass.mjs` 会加载四次：带球、不带球，以及两种设置文档状态——**其中一项专门守着这个回归**：
+`settingsScope` 返回的 section 带着所有字段的 schema 默认值，如果照单全收，就会把本地存的背景图抹掉（还写回本地，两边一起丢）。现在只有「用户层真正写过的字段」才会被采纳，本地有而 Host 没有的值会被**上迁**到设置文档里。
 `verify-together.mjs` 把两个包的浏览器半边加载进同一个文档，用**真实的 `ctx.ball` 服务**驱动玻璃面板，验证跨插件契约本身。
 
 **它验证的是行为与协议，不是视觉效果。** 磨砂强度合不合意、半透明层次好不好看，得在真机上对着自己的壁纸调。

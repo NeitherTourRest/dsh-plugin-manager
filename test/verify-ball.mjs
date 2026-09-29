@@ -87,10 +87,21 @@ check('exports apply', typeof plugin?.apply === 'function')
 const setCalls = []
 let scopeListener = null
 const scopeValue = {}
+// The raw Host layer. `value` is schema-resolved and therefore carries a
+// default for every field, so only a field named here may overwrite the local
+// mirror — the contract the adoption logic is built on.
+const scopeUser = {}
 const scope = {
-  getSnapshot: () => ({ status: 'ready', value: { ...scopeValue }, revision: 1, writable: true, mode: 'host' }),
+  getSnapshot: () => ({
+    status: 'ready',
+    value: { ...scopeValue },
+    user: { ...scopeUser },
+    revision: 1,
+    writable: true,
+    mode: 'host',
+  }),
   subscribe(listener) { scopeListener = listener; return () => { scopeListener = null } },
-  async set(field, value) { setCalls.push([field, value]); scopeValue[field] = value },
+  async set(field, value) { setCalls.push([field, value]); scopeValue[field] = value; scopeUser[field] = value },
   async unset() {},
   async mutate() {},
 }
@@ -214,12 +225,38 @@ const ballElement = shadow.querySelector('.ball')
 check('the ball size drives the size variable', host.style.getPropertyValue('--dshb-size') === '52px', host.style.getPropertyValue('--dshb-size'))
 check('the motion setting drives the host attribute', host.dataset.motion === 'breathe', host.dataset.motion)
 
-// A Host snapshot replaces the local copy.
+// A Host snapshot whose user layer overrides a field replaces the local copy.
 scopeValue.size = 72
 scopeValue.motion = 'sway'
+scopeUser.size = 72
+scopeUser.motion = 'sway'
 scopeListener()
-check('a Host snapshot is adopted', host.style.getPropertyValue('--dshb-size') === '72px', host.style.getPropertyValue('--dshb-size'))
+check('a field the user layer overrides is adopted', host.style.getPropertyValue('--dshb-size') === '72px', host.style.getPropertyValue('--dshb-size'))
 check('the adopted motion reaches the host', host.dataset.motion === 'sway', host.dataset.motion)
+
+// A resolved section nobody wrote must not become the source of truth.
+setCalls.length = 0
+delete scopeUser.size
+scopeValue.size = 52
+scopeListener()
+check('a field absent from the user layer keeps the working copy',
+  host.style.getPropertyValue('--dshb-size') === '72px', host.style.getPropertyValue('--dshb-size'))
+
+// --- the artwork must not hijack the ball's own drag ------------------------
+{
+  const dragStart = new window.Event('dragstart', { bubbles: true, cancelable: true })
+  ballElement.dispatchEvent(dragStart)
+  check('a native dragstart on the ball is prevented', dragStart.defaultPrevented)
+
+  // The probe settled on 'load' earlier, so the art is an <img> right now.
+  const artImage = shadow.querySelector('.art img')
+  check('the mascot image opts out of native dragging',
+    artImage !== null && artImage.draggable === false, String(artImage?.draggable))
+
+  const css = shadow.querySelector('style').textContent
+  check('the art layer is not a pointer target', /\.art\s*\{[^}]*pointer-events:\s*none/s.test(css))
+  check('images and svg opt out of user drag in CSS', /-webkit-user-drag:\s*none/.test(css))
+}
 
 // --- drag: local while moving, durable on release ---------------------------
 setCalls.length = 0

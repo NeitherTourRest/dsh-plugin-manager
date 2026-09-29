@@ -426,18 +426,40 @@ html[data-dshw-clear] .dshw-backdrop {
       let state = readLocal()
       let scope = null
       const listeners = new Set()
+      /** Fields whose local value has already been pushed up to the Host. */
+      const migrated = new Set()
       const publish = () => { for (const listener of [...listeners]) listener() }
 
-      /** Fold a Host section into the working copy, publishing only a real change. */
-      const adopt = (section) => {
+      /**
+       * Fold a Host snapshot into the working copy.
+       *
+       * `snapshot.value` is schema-resolved, so it carries every field even when
+       * nobody ever set one. Adopting it wholesale would erase a value this
+       * client already holds locally — a picked wallpaper, most expensively.
+       * Only a field the raw user layer actually overrides is adopted; a local
+       * value the Host has never seen is pushed up instead, making it durable and
+       * shared rather than dropped.
+       *
+       * @param {object} snapshot - one `settingsScope` snapshot.
+       */
+      const adopt = (snapshot) => {
+        const section = snapshot.value
         if (typeof section !== 'object' || section === null) return
+        const user = typeof snapshot.user === 'object' && snapshot.user !== null ? snapshot.user : {}
         const next = { ...state }
         let changed = false
         for (const key of Object.keys(DEFAULTS)) {
           const value = section[key]
           if (typeof value !== typeof DEFAULTS[key]) continue
           if (key === 'fit' && !FITS.includes(value)) continue
-          if (next[key] !== value) { next[key] = value; changed = true }
+          if (key in user) {
+            if (next[key] !== value) { next[key] = value; changed = true }
+          } else if (next[key] !== DEFAULTS[key] && !migrated.has(key)) {
+            migrated.add(key)
+            void scope.set(key, next[key]).catch((error) => {
+              console.error(`[${PLUGIN_ID}] could not migrate local setting "${key}"`, error)
+            })
+          }
         }
         if (!changed) return
         state = next
@@ -452,7 +474,7 @@ html[data-dshw-clear] .dshw-backdrop {
           const snapshot = scope.getSnapshot()
           // 'loading' leaves the local copy in place, and 'unavailable' keeps
           // it permanently — which is what makes a Host-less client still work.
-          if (snapshot.status === 'ready') adopt(snapshot.value)
+          if (snapshot.status === 'ready') adopt(snapshot)
         }
         ctx.effect(() => scope.subscribe(sync), 'ui-glass: settings scope')
         sync()

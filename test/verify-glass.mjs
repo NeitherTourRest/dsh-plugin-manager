@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Verification harness for packages/dsh-client-ui-glass.
  * Loads the hand-written browser half inside jsdom against a mocked Cordis
  * client context, twice: once with the shared ball present and once without.
@@ -25,10 +25,10 @@ const reactStub = {
 
 /**
  * Load and apply the browser half against a fresh document.
- * @param {{ withBall: boolean, platform?: string }} options - the composition to exercise.
+ * @param {{ withBall: boolean, platform?: string, seed?: object, hostUser?: object, hostValue?: object }} options - the composition, plus any pre-existing local mirror and Host document to start from.
  * @returns the observations the assertions read.
  */
-function load({ withBall, platform }) {
+function load({ withBall, platform, seed, hostUser, hostValue }) {
   const results = []
   const virtualConsole = new VirtualConsole()
   virtualConsole.on('jsdomError', () => {}) // jsdom's CSS parser rejects modern properties; irrelevant here.
@@ -43,6 +43,9 @@ function load({ withBall, platform }) {
 
   const registrations = []
   window.__ModuleLoader__ = { mode: 'queue', pendingQueue: registrations, load: r => registrations.push(r), create: () => {} }
+  // The local mirror of a build that stored preferences before the settings
+  // namespace existed; seeding it is what makes the upgrade path testable.
+  if (seed !== undefined) window.localStorage.setItem('dsh-client-ui-glass/v1', JSON.stringify(seed))
 
   window.HTMLElement.prototype.setPointerCapture = function () {}
   const pointer = (type, x, y) => {
@@ -57,7 +60,11 @@ function load({ withBall, platform }) {
     overrideCalls: [],
     layers: new Map(),
     setCalls: [],
-    scopeValue: {},
+    // `user` is the raw Host layer: the contract being exercised is that only a
+    // field it names may overwrite the local mirror, because `value` carries
+    // schema defaults for every field nobody ever set.
+    scopeValue: { ...hostValue },
+    scopeUser: { ...hostUser },
     scopeListener: null,
     boundNamespace: null,
     ballEntries: [],
@@ -85,9 +92,20 @@ function load({ withBall, platform }) {
   }
 
   const scope = {
-    getSnapshot: () => ({ status: 'ready', value: { ...observed.scopeValue }, revision: 1, writable: true, mode: 'host' }),
+    getSnapshot: () => ({
+      status: 'ready',
+      value: { ...observed.scopeValue },
+      user: { ...observed.scopeUser },
+      revision: 1,
+      writable: true,
+      mode: 'host',
+    }),
     subscribe(listener) { observed.scopeListener = listener; return () => { observed.scopeListener = null } },
-    async set(field, value) { observed.setCalls.push([field, value]); observed.scopeValue[field] = value },
+    async set(field, value) {
+      observed.setCalls.push([field, value])
+      observed.scopeValue[field] = value
+      observed.scopeUser[field] = value
+    },
     async unset() {},
     async mutate() {},
   }
@@ -322,6 +340,67 @@ const report = (label, checks) => {
   check('teardown disposes the theme layer', o.layers.size === 0, `live=${o.layers.size}`)
 
   report('without the shared ball', o.results)
+}
+
+// ═══ Case 3: the settings document must not erase local values ══════════════
+// The regression this guards: `settingsScope` resolves a section against its
+// schema, so `value` carries a default for every field nobody ever set.
+// Adopting it wholesale wiped a wallpaper that a pre-namespace build had stored
+// locally — and wrote the wiped copy back, losing it from both places.
+{
+  const WALLPAPER = 'data:image/jpeg;base64,QUJD'
+  const local = {
+    enabled: true, opacity: 42, blur: 6, saturate: 140, dim: 12,
+    fit: 'contain', wallpaper: WALLPAPER, buttonX: 300, buttonY: 200,
+  }
+  // What the Host resolves when no section was ever written.
+  const schemaDefaults = {
+    enabled: true, opacity: 55, blur: 18, saturate: 120, dim: 25,
+    fit: 'cover', wallpaper: '', buttonX: -1, buttonY: -1,
+  }
+
+  const o = load({ withBall: false, platform: 'win32', seed: local, hostValue: schemaDefaults, hostUser: {} })
+  const { check, window } = o
+  const doc = window.document
+
+  check('an untouched Host document keeps the locally stored wallpaper',
+    doc.querySelector('.dshw-backdrop__image').style.backgroundImage.includes(WALLPAPER),
+    doc.querySelector('.dshw-backdrop__image').style.backgroundImage)
+  check('the local wallpaper is migrated up rather than dropped',
+    o.setCalls.some(([field, value]) => field === 'wallpaper' && value === WALLPAPER),
+    JSON.stringify(o.setCalls.map(c => c[0])))
+  check('every field that diverges from the defaults is migrated',
+    ['opacity', 'blur', 'saturate', 'dim', 'fit', 'wallpaper', 'buttonX', 'buttonY']
+      .every(key => o.setCalls.some(([field]) => field === key)),
+    JSON.stringify(o.setCalls.map(c => c[0])))
+  check('the theme layer still uses the locally stored opacity',
+    o.overrideCalls.at(-1).tokens['--dsw-alias-bg-base'].light.includes('42%, transparent'),
+    o.overrideCalls.at(-1).tokens['--dsw-alias-bg-base'].light)
+  check('an untouched document does not re-migrate on every snapshot',
+    o.setCalls.length === 8, String(o.setCalls.length))
+  o.scopeListener()
+  check('a repeated snapshot migrates nothing further', o.setCalls.length === 8, String(o.setCalls.length))
+  for (const cleanup of o.cleanups) cleanup.dispose()
+  report('against an untouched settings document', o.results)
+}
+
+// A field the raw user layer names is authoritative, even against a local value.
+{
+  const o = load({
+    withBall: false,
+    platform: 'win32',
+    seed: { opacity: 42 },
+    hostValue: { ...{ enabled: true, opacity: 80, blur: 18, saturate: 120, dim: 25, fit: 'cover', wallpaper: '', buttonX: -1, buttonY: -1 } },
+    hostUser: { opacity: 80 },
+  })
+  const { check } = o
+  check('a field the user layer overrides wins over the local mirror',
+    o.overrideCalls.at(-1).tokens['--dsw-alias-bg-base'].light.includes('80%, transparent'),
+    o.overrideCalls.at(-1).tokens['--dsw-alias-bg-base'].light)
+  check('an overridden field is not migrated back',
+    !o.setCalls.some(([field]) => field === 'opacity'), JSON.stringify(o.setCalls))
+  for (const cleanup of o.cleanups) cleanup.dispose()
+  report('against a settings document with that field overridden', o.results)
 }
 
 /** Read one custom property out of the plugin's own stylesheets. */
