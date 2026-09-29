@@ -122,7 +122,7 @@ Host 半边用 `ctx.settings.register('ui-glass', schema)` 注册命名空间，
 ## 六、验证
 
 ```sh
-node test/verify-glass.mjs       # 67 项：两种宿主形态、升级路径、主题层、面板、卡片、卸载
+node test/verify-glass.mjs       # 68 项：带球时让出卡片 / 不带球时自带卡片与按钮、升级路径、主题层、面板、卸载
 node test/verify-together.mjs    # 15 项：与悬浮球的真实交叉集成
 ```
 

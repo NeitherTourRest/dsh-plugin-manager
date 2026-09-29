@@ -1214,6 +1214,20 @@ window.__ModuleLoader__.load({
       })
 
       registerConfigCard(ctx, settings, { packs: () => packs, english: () => localeIsEnglish() })
+      // Every declared module with settings gets its Plugins-page card from the
+      // ball, so a protocol plugin ships no card of its own.
+      registerModuleCards(ctx, {
+        models,
+        bind: (descriptor) => {
+          const existing = bindings.get(descriptor.id)
+          if (existing !== undefined) return existing
+          const binding = bindModuleSettings(ctx, descriptor.settings)
+          bindings.set(descriptor.id, binding)
+          return binding
+        },
+        localize,
+        changes: directoryListeners,
+      })
     }
 
     /**
@@ -1432,6 +1446,95 @@ window.__ModuleLoader__.load({
       if (field.kind === 'toggle') return control.checked
       if (field.kind === 'range') return Number(control.value)
       return control.value
+    }
+
+    /**
+     * Register a Plugins-page configuration card for every declared module that
+     * carries settings.
+     *
+     * This is what lets a plugin stop shipping its own card: the ball already
+     * holds the declaration, the namespace binding, and the form renderer, so it
+     * registers the card the Plugins page would otherwise expect the plugin to
+     * write by hand. Cards are registered per `<package>#<row id>` as the slot
+     * requires, and withdrawn when a module leaves the directory.
+     *
+     * @param {object} ctx - the client Cordis context.
+     * @param {{ models: () => object[], bind: (descriptor: object) => object, localize: (pair: object | undefined, fallback: string) => string, changes: Set<() => void> }} deps - live access to the applied plugin.
+     */
+    function registerModuleCards(ctx, deps) {
+      ctx.inject(['slots', 'locale'], (slotsCtx) => {
+        const React = require('react')
+        const h = React.createElement
+        /** Key → disposer for the registrations currently standing. */
+        const live = new Map()
+
+        const withdraw = (key) => {
+          const dispose = live.get(key)
+          if (dispose === undefined) return
+          live.delete(key)
+          dispose()
+        }
+
+        const sync = () => {
+          const wanted = new Set()
+          for (const model of deps.models()) {
+            const descriptor = model.descriptor
+            if (descriptor?.settings === undefined) continue
+            if (typeof descriptor.package !== 'string' || typeof descriptor.rowId !== 'string') continue
+            // This plugin's own card is richer than the generic form — it owns
+            // the artwork gallery — so it registers its own and is skipped here.
+            if (descriptor.package === PLUGIN_ID) continue
+            const key = `${descriptor.package}#${descriptor.rowId}`
+            wanted.add(key)
+            if (live.has(key)) continue
+            live.set(key, slotsCtx.slots.inject('plugins.row.config', () => slotsCtx.slots.register({
+              name: 'plugins.row.config',
+              key,
+              // The card's copy comes from the module's own declaration, so no
+              // locale namespace of the module's is needed here.
+            }, makeCard(React, h, descriptor, deps))))
+          }
+          for (const key of [...live.keys()]) {
+            if (!wanted.has(key)) withdraw(key)
+          }
+        }
+
+        deps.changes.add(sync)
+        sync()
+        slotsCtx.effect(() => () => {
+          deps.changes.delete(sync)
+          for (const key of [...live.keys()]) withdraw(key)
+        }, 'ui-ball: module configuration cards')
+      })
+    }
+
+    /**
+     * Build one module's configuration card component.
+     *
+     * The form itself is the same plain-DOM renderer the ball's own panel uses,
+     * mounted through a ref: one form implementation, two surfaces.
+     *
+     * @param {object} React - the platform React.
+     * @param {Function} h - `React.createElement`.
+     * @param {object} descriptor - the module's declaration.
+     * @param {{ bind: (descriptor: object) => object, localize: (pair: object | undefined, fallback: string) => string }} deps - live access to the applied plugin.
+     * @returns {Function} the card component.
+     */
+    function makeCard(React, h, descriptor, deps) {
+      return function ModuleConfigCard(props) {
+        const host = React.useRef(null)
+        const isPage = props.view === 'page'
+        React.useEffect(() => {
+          if (!isPage || host.current === null) return undefined
+          return createForm(host.current, {
+            fields: descriptor.settings.fields,
+            settings: deps.bind(descriptor),
+            localize: deps.localize,
+          })
+        }, [isPage])
+        if (!isPage) return deps.localize(descriptor.description, descriptor.title.zh)
+        return h('div', { className: 'dshb-card', ref: host })
+      }
     }
 
     /**

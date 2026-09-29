@@ -833,18 +833,22 @@ html[data-dshw-clear] .dshw-backdrop {
         }), 'ui-glass: ball panel')
       })
 
-      // Fallback for a composition without the ball: this plugin's own button.
+      // Fallback for a composition without the ball: this plugin's own button,
+      // and its own Plugins-page card. With the ball present both are redundant
+      // — the ball hosts the panel and registers a card from the declaration in
+      // this package's manifest — and registering the card twice would collide
+      // on the same `<package>#<row id>` key.
       ctx.effect(() => {
         if (ballHost !== null) return () => {}
         const cleanup = mountStandalone({ settings, translate: () => translate, isSeeThroughWindow })
+        const disposeCard = registerConfigCard(ctx, settings)
         teardownStandalone = cleanup
         return () => {
           teardownStandalone = null
           cleanup()
+          disposeCard()
         }
-      }, 'ui-glass: standalone button')
-
-      registerConfigCard(ctx, settings)
+      }, 'ui-glass: standalone button and card')
     }
 
     /**
@@ -959,15 +963,18 @@ html[data-dshw-clear] .dshw-backdrop {
     }
 
     /**
-     * Register this bundle's own configuration page with the desktop Plugins
-     * page. The page asks every entry for two views: a one-line summary and the
-     * form. The form owns its own edits; the settings scope owns persistence.
+     * Register this plugin's own configuration page with the desktop Plugins
+     * page, for a composition that has no ball to register one from the
+     * `dsh.ball` declaration. The page asks every entry for two views: a
+     * one-line summary and the form. The form owns its own edits; the settings
+     * scope owns persistence.
      *
      * @param {object} ctx - the client Cordis context.
      * @param {object} settings - the settings bridge from {@link createSettings}.
+     * @returns {() => void} disposer withdrawing the registration.
      */
     function registerConfigCard(ctx, settings) {
-      ctx.inject(['slots', 'locale'], (slotsCtx) => {
+      return ctx.inject(['slots', 'locale'], (slotsCtx) => {
         const React = require('react')
         const h = React.createElement
 

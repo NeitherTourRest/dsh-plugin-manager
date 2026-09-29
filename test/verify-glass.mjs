@@ -188,8 +188,8 @@ const report = (label, checks) => {
   check('marks <html> clear while no wallpaper is set', doc.documentElement.hasAttribute('data-dshw-clear'))
   const tagNames = [...doc.querySelectorAll('style[data-plugin="dsh-client-ui-glass"]')]
     .map(tag => tag.dataset.pluginCss).sort()
-  check('injects one owned tag per sheet (glass, settings, card)',
-    tagNames.join() === 'dsh-client-ui-glass/card.css,dsh-client-ui-glass/glass.css,dsh-client-ui-glass/settings.css',
+  check('injects one owned tag per sheet it actually uses (glass, settings)',
+    tagNames.join() === 'dsh-client-ui-glass/glass.css,dsh-client-ui-glass/settings.css',
     tagNames.join())
 
   check('binds the ui-glass settings namespace', o.boundNamespace === 'ui-glass', String(o.boundNamespace))
@@ -268,16 +268,13 @@ const report = (label, checks) => {
   disposePanel()
   check('leaving the panel removes it', slot.childElementCount === 0)
 
-  // Plugins-page card
-  check('requires only the react platform module', o.required.join() === 'react', o.required.join())
-  check('registers exactly one plugins.row.config card', o.slotRegistrations.length === 1, String(o.slotRegistrations.length))
-  const card = o.slotRegistrations[0]
-  check('the card keys on <package>#<row id>', card.declaration.key === 'dsh-client-ui-glass#ui-glass', String(card.declaration.key))
-  check('the card declares the locale namespace', card.declaration.locale === 'uiGlass', String(card.declaration.locale))
-  check('the summary view returns a string', typeof card.component({ t: o.ctx.locale.bind('uiGlass'), view: 'summary' }) === 'string')
-  const page = card.component({ t: o.ctx.locale.bind('uiGlass'), view: 'page' })
-  check('the page view returns the configuration form element',
-    typeof page?.type === 'function' && page.type.name === 'GlassConfigForm', String(page?.type?.name ?? page?.type))
+  // Plugins-page card. With the ball present the ball registers one from this
+  // package's `dsh.ball` declaration, so glass must NOT register its own: the
+  // slot keys on `<package>#<row id>` and a second registration would silently
+  // replace the first. Glass therefore needs no React at all on this path.
+  check('glass requests no module beyond the platform baseline', o.required.length === 0, o.required.join())
+  check('glass leaves the configuration card to the ball', o.slotRegistrations.length === 0,
+    o.slotRegistrations.map(entry => entry.declaration.key).join(' | '))
 
   // teardown
   for (const cleanup of o.cleanups) cleanup.dispose()
@@ -334,6 +331,21 @@ const report = (label, checks) => {
     note.textContent.slice(0, 30))
   panelShadow.querySelector('[data-act="glass"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
   check('the caveat clears once the surfaces are visible again', note.hasAttribute('hidden'))
+
+  // With no ball there is nothing to register the card from the declaration, so
+  // glass supplies its own.
+  check('glass registers its own card when the ball is absent', o.slotRegistrations.length === 1,
+    String(o.slotRegistrations.length))
+  const ownCard = o.slotRegistrations[0]
+  check('the fallback card keys on <package>#<row id>',
+    ownCard?.declaration.key === 'dsh-client-ui-glass#ui-glass', String(ownCard?.declaration.key))
+  check('the fallback card declares the locale namespace',
+    ownCard?.declaration.locale === 'uiGlass', String(ownCard?.declaration.locale))
+  check('the fallback card answers the summary view with a string',
+    typeof ownCard?.component({ t: o.ctx.locale.bind('uiGlass'), view: 'summary' }) === 'string')
+  const ownPage = ownCard?.component({ t: o.ctx.locale.bind('uiGlass'), view: 'page' })
+  check('the fallback card answers the page view with a form element',
+    typeof ownPage?.type === 'function' && ownPage.type.name === 'GlassConfigForm', String(ownPage?.type?.name ?? ownPage?.type))
 
   for (const cleanup of o.cleanups) cleanup.dispose()
   check('teardown removes the fallback button', doc.querySelector('.dshw-host') === null)

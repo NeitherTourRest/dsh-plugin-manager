@@ -358,7 +358,7 @@ check('the committed position matches the painted one',
   `${JSON.stringify(setCalls)} vs ${host.style.left}`)
 
 // --- the Plugins-page card --------------------------------------------------
-check('requires only the react platform module', required.join() === 'react', required.join())
+check('requests only the react platform module', [...new Set(required)].join() === 'react', required.join())
 check('registers exactly one plugins.row.config card', slotRegistrations.length === 1, String(slotRegistrations.length))
 const card = slotRegistrations[0]
 check('the card keys on <package>#<row id>',
@@ -397,6 +397,13 @@ check('a disabled row is marked', rows[1].querySelector('.entry__state')?.textCo
   String(rows[1].querySelector('.entry__state')?.textContent))
 check('a malformed declaration is marked', rows[2].querySelector('.entry__state')?.textContent === '声明有误',
   String(rows[2].querySelector('.entry__state')?.textContent))
+
+// The ball registers the Plugins-page card on a declared module's behalf, which
+// is what lets a protocol plugin ship no card of its own.
+const moduleCards = slotRegistrations.map(entry => entry.declaration.key).filter(Boolean)
+check('the ball registers a configuration card for each declared module with settings',
+  moduleCards.includes('dsh-client-ui-glass#ui-glass'), moduleCards.join(' | '))
+check('a live-only registration gets no card', !moduleCards.includes('undefined'), moduleCards.join(' | '))
 
 // Activating a declared module the ball has never heard from renders the form
 // from its declared fields — the point of the protocol.
