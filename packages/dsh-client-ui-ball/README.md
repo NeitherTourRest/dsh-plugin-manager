@@ -57,47 +57,65 @@ Copy-Item -Recurse -Force .\* $dst
 
 ---
 
-## 二、给插件作者：`ctx.ball` API
+## 二、给插件作者：`dsh.ball` 协议
 
-这是本插件存在的意义。任何客户端插件都可以注册一个面板：
+悬浮球是一个**插件管理器**。加入它只需要在 `package.json` 里声明一段：
 
-```js
-export function apply(ctx) {
-  const ball = ctx.get('ball')          // 可选依赖，用 ctx.get
-  if (ball === undefined) return        // 没装球就安静跳过
-
-  ctx.effect(() => ball.register({
-    id: 'my-plugin',                    // 唯一 id，重复注册会抛错
-    label: () => t('panel'),            // 字符串，或返回字符串的函数（便于跟随语言）
-    icon: '⚙',                          // 列表里的小图标，一个字符
-    order: 20,                          // 排序，小的在前
-    render(container, api) {
-      container.append(myPanelElement())  // container 是球面板里的一个 div
-      return () => { /* 离开面板时清理 */ } // 可选：返回清理函数
-    },
-  }), 'my-plugin: ball panel')
+```json
+"dsh": {
+  "ball": {
+    "id": "my-plugin",
+    "title": { "zh": "我的插件", "en": "My plugin" },
+    "icon": "⚙",
+    "order": 20,
+    "settings": {
+      "namespace": "my-plugin",
+      "fields": [
+        { "key": "level", "kind": "range", "min": 0, "max": 10, "step": 1,
+          "label": { "zh": "等级", "en": "Level" } }
+      ]
+    }
+  }
 }
 ```
 
-### 服务契约
+**这样就完了**——不用写面板、不用写配置卡片、不用注册 slot。悬浮球会：
+
+- 把你的模块列进菜单（**即使你的客户端半边没在运行**，因为它扫的是 manifest）
+- 从你声明的字段**自动生成设置表单**（`toggle` / `range` / `select` / `text` / `image`）
+- 提供启用/停用与恢复默认
+- 在 `Plugins` 页面上替你出配置卡片
+
+需要自定义面板时，再在客户端半边注册一个实时面板即可（**实时面板优先**）：
+
+```js
+const ball = ctx.get('ball')
+ctx.effect(() => ball.register({
+  id: 'my-plugin',                    // 必须与清单里的 id 一致
+  label: () => t('panel'),
+  render(container, api) {
+    container.append(myPanelElement())
+    return () => { /* 离开面板时清理 */ }
+  },
+}), 'my-plugin: ball panel')
+```
+
+**完整规范见 [`PROTOCOL.md`](PROTOCOL.md)**：清单字段、五种字段类型、目录线格式、管理动作、形象包与状态推导。
+
+### `ctx.ball` 服务契约
 
 | 成员 | 说明 |
 |---|---|
-| `register(entry)` | 注册面板，返回精确移除本次注册的 disposer。`id` 非空字符串、`render` 必须是函数，否则抛 `TypeError`；`id` 重复抛 `Error` |
-| `entries()` | 当前已注册面板 `[{ id, label, icon }]`，按渲染顺序 |
+| `register(entry)` | 注册实时面板，返回精确移除本次注册的 disposer。`id` 非空字符串、`render` 必须是函数，否则抛 `TypeError`；`id` 重复抛 `Error` |
+| `entries()` | 当前所有面板 `[{ id, label, icon }]`——**是声明模块与实时注册合并后的结果**，不只是 `register` 过的 |
 | `subscribe(fn)` | 观察注册表变化，返回退订函数 |
-| `open(id?)` | 打开面板。带 `id` 直接打开该面板；不带则：只有一个面板就直接打开它，否则显示列表 |
-| `close()` | 收起面板并释放当前面板 |
-| `toggle()` | 切换 |
-
-`render(container, api)` 的 `api` 目前提供 `{ close }`——面板内按钮可以直接收起整个球面板。
+| `open(id?)` / `close()` / `toggle()` | 打开指定面板 / 收起 / 切换 |
 
 ### 行为要点
 
 - **只有一个面板时，点球直接进面板**；两个以上才显示列表。
 - 面板在**切走时被销毁**（调用它的清理函数），切回来重新 `render`。不要假设面板 DOM 会一直存在。
-- `label` 传函数时，每次渲染列表都会重新求值，所以语言切换会自动跟随。
-- 注册表变化时列表自动重绘；若正在显示列表，会自动刷新。
+- 声明了但没在运行的模块会带状态标记：`已停用` / `未加载` / `声明有误`。
 - 面板内部建议**自己挂 Shadow DOM**（像 `dsh-client-ui-glass` 那样）：球的面板内容在球的 shadow root 里，文档级样式表**穿不进去**。
 
 ---
@@ -112,7 +130,7 @@ export function apply(ctx) {
 
 | 参数 | 范围 | 说明 |
 |---|---|---|
-| 形象 | 空 / URL / 表情 | 留空时优先用 `assets/mascot.*` 本地素材，没有则用内置形象；填 URL 或 `data:` 用图片；填一个短字符（≤8、不含 `/` `:`）当表情符号渲染 |
+| 形象 | 画廊选择 / URL / 表情 | 见第四节。面板里有**画廊**：默认 + 每个已安装的形象包 |
 | 大小 | 28–96 px | |
 | 透明度 | 20–100% | |
 | 动效 | 呼吸 / 摇摆 / 静止 | 尊重 `prefers-reduced-motion` |
@@ -123,11 +141,44 @@ export function apply(ctx) {
 
 ---
 
-## 四、形象
+## 四、形象：画廊、形象包、以及状态
+
+### 画廊
+
+配置卡片顶部是**形象画廊**，点一下即切换：
+
+- **默认** —— `assets/mascot.*`（本仓库自带的就是鲸鱼娘），没有则用内置 SVG
+- **每个已安装的形象包** —— 来自 `assets/packs/<id>/`
+- 输入框里可以直接填 URL、`data:`，或一个短字符（当表情符号渲染）
+
+三者写的是同一个 `image` 设置，只有一个事实来源。
+
+### 形象包（多帧状态）
+
+```
+assets/packs/whale-girl/
+  pack.json    { "title": {...}, "author": "…", "license": "…",
+                 "states": { "idle": "idle.png", "working": "working.png" } }
+  idle.png
+  working.png
+```
+
+悬浮球按**会话状态**切帧：
+
+| 状态 | 条件 |
+|---|---|
+| `waiting` | 有会话在等待你交互（审批/提问） |
+| `working` | 有会话在跑 |
+| `done` | 刚跑完——**本插件自己锁的下降沿**，保持 6 秒 |
+| `idle` | 其余 |
+
+> dsh 没有 `done`/`streaming` 这类枚举，而且库里的 `completionUnread` **故意排除主视图会话**（用户正盯着的那个永远不置位）。所以"完成"帧必须自己锁。
+
+未声明的状态回落到该包的 `idle` 帧。格式只接受 svg / webp / png / jpeg / gif。
 
 ### 三种来源，优先级从高到低
 
-1. **设置里的「形象」**（URL / `data:` / 一个表情符号）
+1. **设置里的「形象」**（画廊选择 / URL / `data:` / 一个表情符号）
 2. **`assets/mascot.*`** —— 本仓库自带 `assets/mascot.png`（社区「鲸鱼娘」），你没动过就用它
 3. **内置形象** —— 本插件原创的 Q 版鲸鱼造型 SVG（蓝色鲸鱼兜帽、头顶尾鳍、喷水、腮红），flat 色块，小尺寸下依然清晰。删掉 `mascot.png` 时会回落到它
 
@@ -166,8 +217,8 @@ CC 的 ShareAlike **不会传染到代码**——图片与代码是彼此独立�
 ## 六、验证
 
 ```sh
-node test/verify-ball.mjs        # 56 项：协议、服务、形象与本地素材探测、设置采纳与上迁、拖动、面板托管、卡片、卸载
-node test/verify-ball-host.mjs   # 27 项：Host 半边的形象路由（自带素材、优先级、405、404、HEAD）
+node test/verify-ball.mjs        # 81 项：协议客户端、目录合并、通用表单、启用动作、形象包与状态、拖动、卸载
+node test/verify-ball-host.mjs   # 67 项：清单扫描器、形象包索引与资源路由、自带素材、405/404/HEAD
 node test/verify-together.mjs    # 15 项：与 dsh-client-ui-glass 的真实交叉集成
 ```
 

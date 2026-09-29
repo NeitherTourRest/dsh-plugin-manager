@@ -20,6 +20,28 @@ assets/
 
 只认这几个固定名字，目录也固定在包内——路由不会读取任何调用方提供的路径。
 
+## 形象包（多帧状态）
+
+除了单张 `mascot.*`，还可以放**形象包**：每个包一个目录，按状态各一张图。
+
+```
+assets/packs/whale-girl/
+  pack.json    { "title": { "zh": "鲸鱼娘", "en": "Whale girl" },
+                 "author": "上善无形 / ZipZipPipe / QYQCAMIAO",
+                 "license": "CC BY-NC-SA 4.0",
+                 "states": { "idle": "idle.png", "working": "working.png" } }
+  idle.png
+  working.png
+```
+
+- 状态：`idle`（必填）/ `working` / `waiting` / `done`；未声明的状态回落到 `idle`。
+- 图片只接受 `.svg` `.webp` `.png` `.jpeg` `.jpg` `.gif`。
+- 装好后会出现在悬浮球配置卡片的**画廊**里，点一下即切换。
+
+悬浮球按**会话状态**切帧：有会话在跑 → `working`；在等你审批/回答 → `waiting`；刚跑完 → `done`（保持 6 秒）；其余 → `idle`。
+
+`.gitignore` 忽略 `assets/packs/` 下的一切，所以你放的包同样**不会进入仓库历史**。
+
 ## 换成你自己的图
 
 把图片放进**已安装副本**的这个目录，命名 `mascot.png`（或上表里的其它名字），**刷新页面**即可：

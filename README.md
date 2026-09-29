@@ -18,7 +18,7 @@
 
 | 包 | 作用 |
 |---|---|
-| [`dsh-client-ui-ball`](packages/dsh-client-ui-ball/README.md) | **共享悬浮球**：可拖动、可换形象的面板宿主。提供 `ctx.ball` 服务，任何插件都能向它注册设置面板——一个球收拢所有插件的设置入口 |
+| [`dsh-client-ui-ball`](packages/dsh-client-ui-ball/README.md) | **共享悬浮球 / 插件管理器**：可拖动、可换形象的面板宿主。定义了 [`dsh.ball` 协议](packages/dsh-client-ui-ball/PROTOCOL.md)——插件在 `package.json` 里声明一段就会被识别，获得统一的列表、设置表单与启用/停用 |
 | [`dsh-client-ui-glass`](packages/dsh-client-ui-glass/README.md) | **透明磨砂玻璃外观**：不透明度 / 磨砂强度 / 背景画面 / 完全透明，面板由悬浮球托管 |
 
 两者都是**免构建**的纯 JavaScript：Host 半边是普通 ESM，浏览器半边是手写的 `window.__ModuleLoader__.load({ id, factory })` 闭包工厂——也就是 dsh 官方 tsdown 客户端预设产物遵守的同一注册协议。仓库的 `packages/client/tsdown.client.ts` 预设没有对外发布，第三方包只能自带打包器或手写这个包装，这里选择手写，因此**克隆下来就能用，不需要任何构建**。
@@ -132,12 +132,12 @@ npm test        # 三个 jsdom 验证脚本
 
 | 脚本 | 覆盖 |
 |---|---|
-| `test/verify-ball.mjs` | 56 项：注册协议、`ctx.ball` 服务契约、形象渲染与本地素材探测、设置采纳与上迁、拖动（含原生拖拽拦截）、面板托管、配置卡片、卸载 |
-| `test/verify-ball-host.mjs` | 27 项：**Host 半边的形象路由**——自带素材的字节与 content-type、文件优先级、405 方法守卫、无素材 404、HEAD 不带 body |
+| `test/verify-ball.mjs` | 81 项：注册协议、`ctx.ball` 服务契约、**声明目录合并与状态标记**、**通用设置表单**、**启用动作**、形象包与状态切换、设置采纳与上迁、拖动、卸载 |
+| `test/verify-ball-host.mjs` | 67 项：**`dsh.ball` 清单扫描器**（对着三个真实 fixture 包）、**形象包索引与资源路由**（含路径穿越拒绝）、自带素材的字节与 content-type、405/404/HEAD |
 | `test/verify-glass.mjs` | 67 项：**带球 / 不带球两种宿主形态**、**升级路径**（schema 默认值不得抹掉本地镜像，且本地值应上迁）、主题令牌层、背景层、面板交互、配置卡片、卸载 |
 | `test/verify-together.mjs` | 15 项：把两个包加载进同一个文档，用**真实的 `ctx.ball` 服务**驱动玻璃面板——验证跨插件契约本身 |
 
-共 165 项。它们验证**行为与协议**，不验证视觉观感。磨砂强度合不合意得在真机上对着自己的壁纸调。
+共 230 项。它们验证**行为与协议**，不验证视觉观感。磨砂强度合不合意得在真机上对着自己的壁纸调。
 
 ---
 

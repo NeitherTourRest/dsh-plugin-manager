@@ -82,10 +82,34 @@ const directory = {
   ],
 }
 let directoryRequests = 0
+let packRequests = 0
+const packIndex = {
+  states: ['idle', 'working', 'waiting', 'done'],
+  packs: [{ id: 'fixture', title: { zh: '测试形象包', en: 'Fixture pack' }, states: { idle: 'idle.png', working: 'working.png' } }],
+}
 window.fetch = async (url) => {
-  directoryRequests += 1
-  if (url !== '/ui-ball/modules') return { ok: false, status: 404, json: async () => ({}) }
-  return { ok: true, status: 200, json: async () => directory }
+  if (url === '/ui-ball/modules') {
+    directoryRequests += 1
+    return { ok: true, status: 200, json: async () => directory }
+  }
+  if (url === '/ui-ball/packs') {
+    packRequests += 1
+    return { ok: true, status: 200, json: async () => packIndex }
+  }
+  return { ok: false, status: 404, json: async () => ({}) }
+}
+
+// A Session-status stand-in: the ball derives its frame from `running` and
+// `pendingInteraction` because dsh declares no finished flag to read.
+const sessionStatusListeners = new Set()
+let sessionStatuses = []
+const sessionStatus = {
+  getSnapshot: () => new Map(sessionStatuses.map((status, index) => [`s${String(index)}`, status])),
+  subscribe(listener) { sessionStatusListeners.add(listener); return () => { sessionStatusListeners.delete(listener) } },
+}
+const setSessionStatuses = (next) => {
+  sessionStatuses = next
+  for (const listener of [...sessionStatusListeners]) listener()
 }
 
 // --- a React stand-in: the card only needs element construction and hooks ---
@@ -133,6 +157,22 @@ const scope = {
   async mutate() {},
 }
 let boundNamespace = null
+// One scope object per namespace, as the real binder produces: sharing a single
+// object would let a module binding replace the ball's own settings listener.
+const makeScope = (namespace) => ({
+  getSnapshot: () => ({ status: 'ready', value: { ...scopeValue }, user: { ...scopeUser }, revision: 1, writable: true, mode: 'host' }),
+  subscribe(listener) {
+    if (namespace !== 'ui-ball') return () => {}
+    scopeListener = listener
+    return () => { scopeListener = null }
+  },
+  async set(field, value) { setCalls.push([field, value]); scopeValue[field] = value; scopeUser[field] = value },
+  async unset() {},
+  async mutate() {},
+})
+const settingsScope = {
+  bind: (spec) => { boundNamespace = spec.namespace; return makeScope(spec.namespace) },
+}
 
 // --- fake cordis context ----------------------------------------------------
 const provided = new Map()
@@ -143,7 +183,8 @@ const cordisListeners = []
 const rowToggles = []
 const ctx = {
   get: (name) => {
-    if (name === 'settingsScope') return { bind: (spec) => { boundNamespace = spec.namespace; return scope } }
+    if (name === 'settingsScope') return settingsScope
+    if (name === 'uiSession') return { sessionStatus }
     if (name === 'remote') return { pluginManager: { setPluginEnabled: async (id, on) => { rowToggles.push([id, on]); return { ok: true } } }, $on: () => () => {} }
     return undefined
   },
@@ -381,6 +422,45 @@ check('the enable action reaches the profile plugin manager',
 check('the directory is refetched after a management action', directoryRequests === 2, String(directoryRequests))
 
 ball.close()
+
+// --- mascot packs and the derived frame -------------------------------------
+check('the pack index is fetched once at mount', packRequests === 1, String(packRequests))
+check('an idle ball reports the idle frame', host.dataset.state === 'idle', String(host.dataset.state))
+
+const adopt = (field, value) => {
+  scopeUser[field] = value
+  scopeValue[field] = value
+  scopeListener()
+}
+adopt('image', 'pack:fixture')
+check('selecting a pack paints its idle frame',
+  shadow.querySelector('.art img')?.getAttribute('src') === '/ui-ball/pack/fixture/idle',
+  `${String(shadow.querySelector('.art img')?.getAttribute('src'))} || packs=${String(packRequests)} || ${art.innerHTML.slice(0, 120)}`)
+
+setSessionStatuses([{ running: true, pendingInteraction: undefined }])
+check('a running session switches to the working frame',
+  host.dataset.state === 'working' && shadow.querySelector('.art img')?.getAttribute('src') === '/ui-ball/pack/fixture/working',
+  `${host.dataset.state} ${shadow.querySelector('.art img')?.getAttribute('src')}`)
+
+setSessionStatuses([{ running: true, pendingInteraction: { kind: 'approval' } }])
+check('a pending interaction outranks running', host.dataset.state === 'waiting', String(host.dataset.state))
+check('a state with no declared art falls back to the pack idle frame',
+  shadow.querySelector('.art img')?.getAttribute('src') === '/ui-ball/pack/fixture/idle',
+  String(shadow.querySelector('.art img')?.getAttribute('src')))
+
+setSessionStatuses([{ running: false, pendingInteraction: undefined }])
+check('the falling edge latches the finished frame', host.dataset.state === 'done', String(host.dataset.state))
+
+setSessionStatuses([{ running: true, pendingInteraction: undefined }])
+check('running again clears the finished frame', host.dataset.state === 'working', String(host.dataset.state))
+
+setSessionStatuses([])
+check('stopping again latches the finished frame once more', host.dataset.state === 'done', String(host.dataset.state))
+
+adopt('image', '')
+check('clearing the artwork returns to the shipped mascot',
+  shadow.querySelector('.art img')?.getAttribute('src') === '/ui-ball/mascot',
+  String(shadow.querySelector('.art img')?.getAttribute('src')))
 
 // --- teardown ---------------------------------------------------------------
 const labels = cleanups.map(cleanup => cleanup.label)

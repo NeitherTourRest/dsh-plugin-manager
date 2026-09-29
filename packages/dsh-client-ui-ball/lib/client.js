@@ -60,6 +60,25 @@ window.__ModuleLoader__.load({
      */
     const MODULE_DIRECTORY_URL = '/ui-ball/modules'
 
+    /** Route the Host half serves the mascot pack index on. */
+    const PACKS_URL = '/ui-ball/packs'
+
+    /** Prefix one pack state's artwork is served under. */
+    const PACK_ASSET_PREFIX = '/ui-ball/pack'
+
+    /** Value prefix in the `image` setting that selects a pack instead of a URL. */
+    const PACK_PREFIX = 'pack:'
+
+    /**
+     * Frames the ball switches between. dsh exposes no such enum: `idle`,
+     * `working` and `waiting` are derived from Session status, and `done` is
+     * this plugin's own falling edge of `running`, held briefly.
+     */
+    const BALL_STATES = ['idle', 'working', 'waiting', 'done']
+
+    /** How long the finished frame stays after the last session stops running. */
+    const DONE_HOLD_MS = 6000
+
     /**
      * Local mascot state for this plugin run: `unknown` until the one probe
      * settles, then `present` (the asset is the default artwork) or `absent`
@@ -105,6 +124,9 @@ window.__ModuleLoader__.load({
         summary: '悬浮球外观：形象、大小、透明度、动效',
         image: '形象',
         imageHint: '留空时用 assets/mascot.* 里的本地图，没有则用内置形象；也可填图片 URL 或一个表情符号',
+        packDefault: '默认',
+        packDefaultHint: '仓库自带的形象（assets/mascot.*），没有则用内置 SVG',
+        packGallery: '形象包',
         imagePick: '选择图片',
         imageClear: '恢复内置',
         size: '大小',
@@ -125,6 +147,9 @@ window.__ModuleLoader__.load({
         summary: 'Ball appearance: artwork, size, opacity, motion',
         image: 'Artwork',
         imageHint: 'Empty uses assets/mascot.* beside the installed package, else the built-in art; a URL or a single emoji also works',
+        packDefault: 'Default',
+        packDefaultHint: 'The artwork shipped beside the package (assets/mascot.*), else the built-in SVG',
+        packGallery: 'Packs',
         imagePick: 'Choose image',
         imageClear: 'Restore built-in',
         size: 'Size',
@@ -329,6 +354,22 @@ window.__ModuleLoader__.load({
 }
 .dshb-card__actions button:hover { background: var(--dsw-alias-bg-layer-2, #f3f4f6); }
 .dshb-card__actions button:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary, #4b86f0); outline-offset: 1px; }
+
+/* Artwork gallery: one selectable chip per installed pack. */
+.dshb-card__gallery { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 2 / -1; }
+.dshb-card__pick {
+  padding: 4px 10px; border: 0.5px solid var(--dsw-alias-border-l2, #d1d5db); border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-1, #fff); color: var(--dsw-alias-label-primary, #111827);
+  font: inherit; font-size: 11px; cursor: pointer;
+}
+.dshb-card__pick:hover { background: var(--dsw-alias-bg-layer-2, #f3f4f6); }
+.dshb-card__pick:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary, #4b86f0); outline-offset: 1px; }
+.dshb-card__pick[data-selected='true'] {
+  border-color: var(--dsw-alias-brand-primary, #4b86f0);
+  background: color-mix(in srgb, var(--dsw-alias-brand-primary, #4b86f0) 16%, transparent);
+  font-weight: 600;
+}
+.dshb-card__broken { color: var(--dsw-alias-state-error-primary, #e5534b); font-size: 11px; }
 `
 
     /** Shadow-root markup. Static text only; every value reaches the DOM through properties. */
@@ -561,6 +602,65 @@ window.__ModuleLoader__.load({
       const directoryListeners = new Set()
       const notifyDirectory = () => { for (const listener of [...directoryListeners]) listener() }
 
+      /** Mascot packs served by the Host half, and the states they may carry. */
+      let packs = []
+      let packsLoaded = false
+
+      /**
+       * The frame the ball is showing. Derived, never settable from outside:
+       * `waiting` beats `working` beats a held `done` beats `idle`.
+       */
+      let ballState = 'idle'
+      let wasRunning = false
+      let doneUntil = 0
+      let doneTimer = null
+
+      /** Re-read the pack index. */
+      const loadPacks = async () => {
+        try {
+          const response = await fetch(PACKS_URL, { headers: { accept: 'application/json' } })
+          if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+          const body = await response.json()
+          packs = Array.isArray(body?.packs) ? body.packs : []
+        } catch {
+          // A composition without the Host route simply has no packs; the
+          // single-file mascot and the built-in art still work.
+          packs = []
+        }
+        packsLoaded = true
+        renderAppearance()
+      }
+
+      /**
+       * Recompute the frame from Session status.
+       *
+       * The status map carries `running` and `pendingInteraction`; there is no
+       * finished flag to read, because the library's own `completionUnread`
+       * deliberately excludes the session the user is watching. So the finished
+       * frame is latched here, on this plugin's own falling edge.
+       */
+      const refreshState = () => {
+        const uiSession = ctx.get('uiSession')
+        const source = uiSession === undefined ? undefined : uiSession.sessionStatus
+        if (source === undefined) return
+        const values = [...source.getSnapshot().values()]
+        const running = values.some(status => status.running === true)
+        const waiting = values.some(status => status.pendingInteraction !== undefined)
+        if (running) {
+          doneUntil = 0
+          if (doneTimer !== null) { clearTimeout(doneTimer); doneTimer = null }
+        } else if (wasRunning) {
+          doneUntil = Date.now() + DONE_HOLD_MS
+          if (doneTimer !== null) clearTimeout(doneTimer)
+          doneTimer = setTimeout(() => { doneTimer = null; doneUntil = 0; refreshState() }, DONE_HOLD_MS)
+        }
+        wasRunning = running
+        const next = running ? (waiting ? 'waiting' : 'working') : (Date.now() < doneUntil ? 'done' : 'idle')
+        if (next === ballState) return
+        ballState = next
+        renderAppearance()
+      }
+
       /** Namespace bindings, one per declared module, created on first use. */
       const bindings = new Map()
 
@@ -683,32 +783,53 @@ window.__ModuleLoader__.load({
         surface.dataset.align = spot.x + size / 2 < window.innerWidth / 2 ? 'left' : 'right'
       }
 
-      /** Paint the mascot: an explicit source, the local asset, or the built-in art. */
+      /** Paint the mascot: a pack frame, an explicit source, or the built-in art. */
       const paintArt = () => {
         const safe = safeUrl((settings.get().image ?? '').trim())
-        // The local asset is part of the paint key: the probe settling has to
-        // repaint even though no setting moved.
-        const key = `${safe}|${localMascot}`
+        // The frame, the local probe and the pack list are all part of the paint
+        // key: the artwork can change while no setting moved.
+        const key = `${safe}|${localMascot}|${ballState}|${packsLoaded ? packs.length : -1}`
         // Rebuilding the art is the one expensive paint here, so it happens
         // only when the source actually moved — not on every slider tick.
         if (key === lastImage) return
         lastImage = key
         art.textContent = ''
-        if (safe === '' && localMascot !== 'present') {
-          art.dataset.kind = 'svg'
-          art.innerHTML = MASCOT_SVG
-        } else if (safe !== '' && isGlyph(safe)) {
-          art.dataset.kind = 'glyph'
-          art.textContent = safe
-        } else {
+        const image = (src) => {
           art.dataset.kind = 'img'
           const element = document.createElement('img')
-          element.src = safe === '' ? LOCAL_MASCOT_URL : safe
+          element.src = src
           element.alt = ''
           // An <img> is draggable by default, which would hijack the ball's own
           // drag and drop the file onto the page instead.
           element.draggable = false
+          element.addEventListener('error', () => {
+            // Artwork that vanished from disk falls back to the built-in frame
+            // rather than leaving a broken image on screen.
+            if (art.firstElementChild === element) { element.remove(); art.dataset.kind = 'svg'; art.innerHTML = MASCOT_SVG }
+          }, { once: true })
           art.append(element)
+        }
+        if (safe.startsWith(PACK_PREFIX)) {
+          const id = safe.slice(PACK_PREFIX.length)
+          const pack = packs.find(candidate => candidate.id === id && candidate.problem === undefined)
+          if (pack !== undefined) {
+            // A pack declares which states it carries, so the frame name is
+            // resolved here rather than asking for artwork that cannot exist.
+            const state = pack.states?.[ballState] === undefined ? 'idle' : ballState
+            image(`${PACK_ASSET_PREFIX}/${id}/${state}`)
+            return
+          }
+        }
+        if (safe === '' && localMascot !== 'present') {
+          art.dataset.kind = 'svg'
+          art.innerHTML = MASCOT_SVG
+        } else if (safe !== '' && !safe.startsWith(PACK_PREFIX) && isGlyph(safe)) {
+          art.dataset.kind = 'glyph'
+          art.textContent = safe
+        } else if (safe !== '' && !safe.startsWith(PACK_PREFIX)) {
+          image(safe)
+        } else {
+          image(LOCAL_MASCOT_URL)
         }
       }
 
@@ -871,6 +992,7 @@ window.__ModuleLoader__.load({
         host.style.setProperty('--dshb-opacity', String(state.opacity / 100))
         host.style.setProperty('--dshb-width', `${state.surfaceWidth}px`)
         host.dataset.motion = MOTIONS.includes(state.motion) ? state.motion : 'breathe'
+        host.dataset.state = ballState
         ball.title = translate('open')
         ball.setAttribute('aria-label', translate('open'))
         paintArt()
@@ -1027,8 +1149,29 @@ window.__ModuleLoader__.load({
         probe.addEventListener('load', () => { localMascot = 'present'; renderAppearance() })
         probe.addEventListener('error', () => { localMascot = 'absent'; renderAppearance() })
         probe.src = LOCAL_MASCOT_URL
-        // The declared-module directory is the other half of the menu.
+        // The declared-module directory and the pack index are the other halves
+        // of the menu and the gallery.
         void loadDirectory()
+        void loadPacks()
+        const uiSession = ctx.get('uiSession')
+        const statusSource = uiSession === undefined ? undefined : uiSession.sessionStatus
+        if (statusSource !== undefined) {
+          const onStatus = () => { refreshState() }
+          onStatus()
+          const unsubscribeStatus = statusSource.subscribe(onStatus)
+          return () => {
+            unsubscribeStatus()
+            if (doneTimer !== null) { clearTimeout(doneTimer); doneTimer = null }
+            hostStyleTag.remove()
+            host.remove()
+            window.removeEventListener('resize', onResize)
+            unsubscribeSettings()
+            deactivate()
+            entries.clear()
+            watchers.clear()
+            bindings.clear()
+          }
+        }
         return () => {
           hostStyleTag.remove()
           host.remove()
@@ -1070,7 +1213,7 @@ window.__ModuleLoader__.load({
         }
       })
 
-      registerConfigCard(ctx, settings)
+      registerConfigCard(ctx, settings, { packs: () => packs, english: () => localeIsEnglish() })
     }
 
     /**
@@ -1298,8 +1441,9 @@ window.__ModuleLoader__.load({
      *
      * @param {object} ctx - the client Cordis context.
      * @param {object} settings - the settings bridge from {@link createSettings}.
+     * @param {{ packs: () => object[], english: () => boolean }} deps - live accessors into the applied plugin.
      */
-    function registerConfigCard(ctx, settings) {
+    function registerConfigCard(ctx, settings, deps) {
       ctx.inject(['slots', 'locale'], (slotsCtx) => {
         const React = require('react')
         const h = React.createElement
@@ -1313,12 +1457,53 @@ window.__ModuleLoader__.load({
           return () => { cardStyleTag.remove() }
         }, 'ui-ball: card stylesheet')
 
-        /** The mascot preview: the chosen image, the local asset, or the built-in art. */
+        /** Preview source for one selection: a pack frame, a URL, or the shipped file. */
+        const sourceOf = (image) => {
+          const safe = safeUrl((image ?? '').trim())
+          if (safe.startsWith(PACK_PREFIX)) {
+            const id = safe.slice(PACK_PREFIX.length)
+            const pack = deps.packs().find(candidate => candidate.id === id && candidate.problem === undefined)
+            // Every valid pack declares an idle frame, so this is its thumbnail.
+            if (pack !== undefined) return `${PACK_ASSET_PREFIX}/${id}/idle`
+          }
+          if (safe === '') return localMascot === 'present' ? LOCAL_MASCOT_URL : undefined
+          if (isGlyph(safe)) return undefined
+          return safe
+        }
+
+        /** The mascot preview: the current selection, or the built-in art when nothing else applies. */
         const preview = (image) => {
           const safe = safeUrl((image ?? '').trim())
-          if (safe === '' && localMascot !== 'present') return h('i', { dangerouslySetInnerHTML: { __html: MASCOT_SVG } })
-          if (safe !== '' && isGlyph(safe)) return h('i', { 'data-kind': 'glyph' }, safe)
-          return h('i', null, h('img', { src: safe === '' ? LOCAL_MASCOT_URL : safe, alt: '', draggable: false }))
+          const source = sourceOf(image)
+          if (source !== undefined) return h('i', null, h('img', { src: source, alt: '', draggable: false }))
+          if (isGlyph(safe)) return h('i', { 'data-kind': 'glyph' }, safe)
+          return h('i', { dangerouslySetInnerHTML: { __html: MASCOT_SVG } })
+        }
+
+        /**
+         * The artwork gallery: the shipped default plus every installed pack.
+         * Selecting one writes the same `image` value the URL box edits, so there
+         * is exactly one source of truth.
+         */
+        const gallery = (state, t) => {
+          const current = safeUrl((state.image ?? '').trim())
+          const option = (value, label, hint) => h('button', {
+            type: 'button',
+            key: value === '' ? 'default' : value,
+            className: 'dshb-card__pick',
+            'data-selected': current === value ? 'true' : 'false',
+            title: hint,
+            onClick: () => { settings.commit('image', value) },
+          }, label)
+          const english = deps.english()
+          const installed = deps.packs().filter(pack => pack.problem === undefined)
+          const broken = deps.packs().filter(pack => pack.problem !== undefined)
+          return h('div', { className: 'dshb-card__gallery' },
+            option('', t('packDefault'), t('packDefaultHint')),
+            ...installed.map(pack => option(`${PACK_PREFIX}${pack.id}`, english ? pack.title.en : pack.title.zh,
+              [pack.author, pack.license].filter(Boolean).join(' · '))),
+            ...broken.map(pack => h('span', { className: 'dshb-card__broken', key: pack.id },
+              `${pack.id}: ${String(pack.problem)}`)))
         }
 
         /**
@@ -1351,6 +1536,9 @@ window.__ModuleLoader__.load({
           React.useEffect(() => settings.subscribe(() => { setState(settings.get()) }), [])
 
           return h('div', { className: 'dshb-card' },
+            h('div', { className: 'dshb-card__row' },
+              h('span', null, t('packGallery')),
+              gallery(state, t)),
             h('div', { className: 'dshb-card__row' },
               h('span', null, t('image')),
               h('div', { className: 'dshb-card__preview' },

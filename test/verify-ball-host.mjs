@@ -92,16 +92,19 @@ const makeCtx = () => ({
 
 plugin.apply(makeCtx())
 check('registers the ui-ball settings namespace', namespaces.join() === 'ui-ball', namespaces.join())
-check('registers the mascot route and the directory route',
-  routes.map(route => route.path).sort().join() === '/ui-ball/mascot,/ui-ball/modules',
+check('registers the mascot route, the pack index, the pack artwork prefix and the directory route',
+  routes.map(route => route.path).sort().join() === '/ui-ball/mascot,/ui-ball/modules,/ui-ball/pack/,/ui-ball/packs',
   routes.map(route => route.path).join())
-check('both routes are exact',
-  routes.every(route => route.kind === 'exact'), routes.map(route => route.kind).join())
-check('each route is owned by an effect', effects.length === 2, effects.join())
+check('only the pack artwork route is a prefix; the rest are exact',
+  routes.filter(route => route.kind === 'prefix').map(route => route.path).join() === '/ui-ball/pack/',
+  routes.map(route => `${route.kind}:${route.path}`).join())
+check('each route is owned by an effect', effects.length === 4, effects.join())
 
 const serve = routes.find(route => route.path === plugin.MASCOT_ROUTE).handler
 const serveModules = routes.find(route => route.path === plugin.MODULE_ROUTE).handler
-const request = (method) => ({ method })
+const servePacks = routes.find(route => route.path === plugin.PACKS_ROUTE).handler
+const servePackAsset = routes.find(route => route.path === plugin.PACK_ASSET_PREFIX + '/').handler
+const request = (method, url) => ({ method, url })
 const response = () => {
   const res = { status: undefined, headers: undefined, body: undefined }
   res.writeHead = (status, headers) => { res.status = status; res.headers = headers ?? {} }
@@ -284,6 +287,94 @@ rows = [row('@fixture/good', 'good'), row('@fixture/bad', 'bad'), row('@fixture/
   const head = response()
   await serveModules(request('HEAD'), head)
   check('the directory answers HEAD without a body', head.status === 200 && head.body === undefined)
+}
+
+// ── mascot packs ────────────────────────────────────────────────────────────
+// Packs are read from the shipped assets directory, so the fixtures are written
+// there and removed in the finally block below.
+{
+  const packsDirectory = join(plugin.MASCOT_DIRECTORY, 'packs')
+  const packDirectory = join(packsDirectory, 'fixture-pack')
+  const droppings = [packsDirectory]
+  const writePack = (manifest, files) => {
+    mkdirSync(packDirectory, { recursive: true })
+    writeFileSync(join(packDirectory, 'pack.json'), JSON.stringify(manifest))
+    for (const [name, body] of Object.entries(files)) writeFileSync(join(packDirectory, name), body)
+  }
+  const readIndex = async () => {
+    const res = response()
+    await servePacks(request('GET'), res)
+    return { res, json: JSON.parse(res.body.toString('utf8')) }
+  }
+
+  try {
+    {
+      const { res, json } = await readIndex()
+      check('an absent packs directory is an empty index',
+        res.status === 200 && json.packs.length === 0, JSON.stringify(json))
+      check('the index publishes the known states', json.states.join() === 'idle,working,waiting,done', json.states.join())
+    }
+
+    writePack(
+      { title: { zh: '测试形象包', en: 'Fixture pack' }, author: 'someone', license: 'CC0-1.0', states: { idle: 'idle.png', working: 'working.webp' } },
+      { 'idle.png': Buffer.from([0x89, 0x50]), 'working.webp': Buffer.from([0x52, 0x49]) },
+    )
+    {
+      const { json } = await readIndex()
+      const pack = json.packs[0]
+      check('a pack is listed with its localized title', pack.id === 'fixture-pack' && pack.title.zh === '测试形象包')
+      check('a pack carries author and licence', pack.author === 'someone' && pack.license === 'CC0-1.0')
+      check('a pack lists its declared states', Object.keys(pack.states).join() === 'idle,working', Object.keys(pack.states).join())
+      check('a well-formed pack reports no problem', pack.problem === undefined, String(pack.problem))
+    }
+
+    {
+      const res = response()
+      await servePackAsset(request('GET', '/ui-ball/pack/fixture-pack/idle'), res)
+      check('a declared state is served with its content type',
+        res.status === 200 && res.headers['content-type'] === 'image/png', `${res.status} ${res.headers?.['content-type']}`)
+      check('the artwork bytes are returned', Buffer.from(res.body).equals(Buffer.from([0x89, 0x50])))
+    }
+    {
+      const res = response()
+      await servePackAsset(request('GET', '/ui-ball/pack/fixture-pack/working'), res)
+      check('a webp state is served as image/webp', res.headers?.['content-type'] === 'image/webp', String(res.headers?.['content-type']))
+    }
+    {
+      const res = response()
+      await servePackAsset(request('GET', '/ui-ball/pack/fixture-pack/done'), res)
+      check('an undeclared state falls back to idle',
+        res.status === 200 && res.headers['content-type'] === 'image/png', String(res.status))
+    }
+    for (const [label, url] of [
+      ['an unknown pack', '/ui-ball/pack/nope/idle'],
+      ['an unknown state', '/ui-ball/pack/fixture-pack/../../etc/passwd'],
+      ['a traversing pack id', '/ui-ball/pack/..%2F..%2Fetc/idle'],
+    ]) {
+      const res = response()
+      await servePackAsset(request('GET', url), res)
+      check(`${label} is refused`, res.status === 404, String(res.status))
+    }
+    {
+      const res = response()
+      await servePackAsset(request('POST', '/ui-ball/pack/fixture-pack/idle'), res)
+      check('a pack asset write is refused with 405', res.status === 405, String(res.status))
+    }
+
+    // A pack that declares nothing usable is reported, not hidden.
+    rmSync(packDirectory, { recursive: true, force: true })
+    writePack({ title: 'Broken pack', states: { idle: 'idle.txt' } }, { 'idle.txt': 'x' })
+    {
+      const { json } = await readIndex()
+      check('a pack with no usable artwork reports its problem',
+        typeof json.packs[0].problem === 'string' && json.packs[0].problem.includes('svg/webp/png'), String(json.packs[0].problem))
+      const res = response()
+      await servePackAsset(request('GET', '/ui-ball/pack/fixture-pack/idle'), res)
+      check('a broken pack serves nothing', res.status === 404, String(res.status))
+    }
+  } finally {
+    for (const path of droppings) rmSync(path, { recursive: true, force: true })
+  }
 }
 
 // ── report ──────────────────────────────────────────────────────────────────

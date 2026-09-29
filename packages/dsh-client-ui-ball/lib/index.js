@@ -21,6 +21,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import z from '@deepseek-ai/schemastery'
 import { collectBallModules } from './modules.js'
+import { PACK_STATES, readPackIndex, resolvePackAsset } from './packs.js'
 
 /** Cordis plugin name. */
 export const name = 'ui-ball'
@@ -36,6 +37,12 @@ export const MASCOT_ROUTE = '/ui-ball/mascot'
 
 /** Path the ball module directory answers on. */
 export const MODULE_ROUTE = '/ui-ball/modules'
+
+/** Path the mascot pack index answers on. */
+export const PACKS_ROUTE = '/ui-ball/packs'
+
+/** Prefix one pack state's artwork is served under: `<prefix>/<pack id>/<state>`. */
+export const PACK_ASSET_PREFIX = '/ui-ball/pack'
 
 /** Directory beside this package holding an optional local mascot. */
 export const MASCOT_DIRECTORY = fileURLToPath(new URL('../assets/', import.meta.url))
@@ -131,6 +138,68 @@ async function serveMascot(req, res) {
 }
 
 /**
+ * Serve the mascot pack index. `no-cache` is deliberate: dropping artwork into
+ * `assets/packs/` is the whole workflow and a cached index would hide it.
+ * @param {import('node:http').IncomingMessage} req - the request.
+ * @param {import('node:http').ServerResponse} res - the response.
+ */
+async function servePacks(req, res) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { allow: 'GET, HEAD' })
+    res.end()
+    return
+  }
+  const body = Buffer.from(`${JSON.stringify({ states: PACK_STATES, packs: readPackIndex(MASCOT_DIRECTORY) })}\n`, 'utf8')
+  res.writeHead(200, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': body.byteLength,
+    'cache-control': 'no-cache',
+  })
+  res.end(req.method === 'HEAD' ? undefined : body)
+}
+
+/**
+ * Serve one pack state's artwork. The pack id and state name are validated
+ * against the index before any file is read, so the request path can never name
+ * a file of its own.
+ * @param {import('node:http').IncomingMessage} req - the request.
+ * @param {import('node:http').ServerResponse} res - the response.
+ */
+async function servePackAsset(req, res) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405, { allow: 'GET, HEAD' })
+    res.end()
+    return
+  }
+  // Only the two segments after the known prefix name anything, and the pack id
+  // and state are validated against the index before a file is opened.
+  const pathname = new URL(req.url ?? '/', 'http://localhost').pathname
+  const rest = pathname.startsWith(`${PACK_ASSET_PREFIX}/`) ? pathname.slice(PACK_ASSET_PREFIX.length + 1) : ''
+  const [packId, state] = rest.split('/')
+  const resolved = resolvePackAsset(MASCOT_DIRECTORY, packId ?? '', state ?? '')
+  if (resolved === undefined) {
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-cache' })
+    res.end('no such pack state\n')
+    return
+  }
+  let body
+  try {
+    body = await readFile(resolved.path)
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-cache' })
+    res.end('pack artwork is missing\n')
+    return
+  }
+  res.writeHead(200, {
+    'content-type': resolved.contentType,
+    'content-length': body.byteLength,
+    'cache-control': 'no-cache',
+  })
+  res.end(req.method === 'HEAD' ? undefined : body)
+}
+
+/**
  * Serve the current ball module directory. `no-cache` is deliberate: enabling
  * or disabling a plugin changes this listing, and the ball refetches it.
  * @param {import('node:http').IncomingMessage} req - the request.
@@ -166,17 +235,15 @@ export function apply(ctx) {
   })
   ctx.inject(['loader', 'webServer'], (webCtx) => {
     const loader = webCtx.loader
-    webCtx.effect(
-      () => webCtx.webServer.register({ kind: 'exact', path: MASCOT_ROUTE, handler: serveMascot }),
-      'ui-ball: local mascot route',
-    )
-    webCtx.effect(
-      () => webCtx.webServer.register({
-        kind: 'exact',
-        path: MODULE_ROUTE,
-        handler: (req, res) => serveModules(req, res, loader),
-      }),
-      'ui-ball: module directory route',
-    )
+    const route = (path, handler, label) => {
+      webCtx.effect(
+        () => webCtx.webServer.register({ kind: path.endsWith('/') ? 'prefix' : 'exact', path, handler }),
+        label,
+      )
+    }
+    route(MASCOT_ROUTE, serveMascot, 'ui-ball: local mascot route')
+    route(PACKS_ROUTE, servePacks, 'ui-ball: mascot pack index')
+    route(`${PACK_ASSET_PREFIX}/`, servePackAsset, 'ui-ball: mascot pack artwork')
+    route(MODULE_ROUTE, (req, res) => serveModules(req, res, loader), 'ui-ball: module directory route')
   })
 }
