@@ -13,7 +13,7 @@
  * Run from the repository root:
  *   node test/verify-ball-host.mjs
  */
-import { rmSync, writeFileSync, mkdirSync } from 'node:fs'
+import { rmSync, writeFileSync, mkdirSync, readFileSync, existsSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import { register } from 'node:module'
 
@@ -73,18 +73,47 @@ const response = () => {
   return res
 }
 
-// The package ships no artwork, so the first read is the empty-directory case.
+// ── the shipped mascot, then the empty-directory case ───────────────────────
+const SHIPPED = join(plugin.MASCOT_DIRECTORY, 'mascot.png')
+const HELD = join(plugin.MASCOT_DIRECTORY, 'mascot.png.held')
+// The repository ships artwork here, and this test both reads and displaces it,
+// so the original bytes are captured up front and restored in the finally block
+// below no matter how the run ends.
+const shippedBytes = existsSync(SHIPPED) ? readFileSync(SHIPPED) : null
+check('the package ships a default mascot', shippedBytes !== null)
+check('the shipped mascot is a PNG',
+  shippedBytes !== null && shippedBytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  shippedBytes?.subarray(0, 8).toString('hex'))
+
 {
   const res = response()
   await serve(request('GET'), res)
-  check('no local asset answers 404', res.status === 404, String(res.status))
-  check('the 404 is not cached', res.headers?.['cache-control'] === 'no-cache', String(res.headers?.['cache-control']))
+  check('the shipped mascot is served as image/png',
+    res.status === 200 && res.headers['content-type'] === 'image/png', `${res.status} ${res.headers?.['content-type']}`)
+  check('the shipped bytes are returned unchanged',
+    shippedBytes !== null && Buffer.from(res.body).equals(shippedBytes))
+  check('content-length matches the shipped file',
+    shippedBytes !== null && res.headers['content-length'] === shippedBytes.byteLength,
+    String(res.headers['content-length']))
+  check('the response is never cached', res.headers['cache-control'] === 'no-cache',
+    String(res.headers['cache-control']))
 }
 
-// ── with artwork present ────────────────────────────────────────────────────
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8"/>'
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47])
 mkdirSync(plugin.MASCOT_DIRECTORY, { recursive: true })
+// `mascot.png.held` is deliberately not one of the served names, so holding the
+// shipped file aside is indistinguishable from it being absent.
+renameSync(SHIPPED, HELD)
+
+{
+  const res = response()
+  await serve(request('GET'), res)
+  check('no asset at all answers 404', res.status === 404, String(res.status))
+  check('the 404 is not cached', res.headers?.['cache-control'] === 'no-cache', String(res.headers?.['cache-control']))
+}
+
+// ── with candidate artwork present ──────────────────────────────────────────
 const written = []
 const place = (name, body) => {
   writeFileSync(join(plugin.MASCOT_DIRECTORY, name), body)
@@ -137,7 +166,12 @@ try {
   check('a directory named mascot.svg falls through to 404', res.status === 404, String(res.status))
 } finally {
   for (const path of written) rmSync(path, { recursive: true, force: true })
-  // Leave the directory in place; it is the documented drop-in location.
+  // The shipped mascot is restored, not recreated, so a failing run can never
+  // leave the repository without its default artwork.
+  if (existsSync(HELD)) {
+    rmSync(SHIPPED, { force: true })
+    renameSync(HELD, SHIPPED)
+  }
 }
 
 // ── report ──────────────────────────────────────────────────────────────────

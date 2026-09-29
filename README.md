@@ -133,11 +133,11 @@ npm test        # 三个 jsdom 验证脚本
 | 脚本 | 覆盖 |
 |---|---|
 | `test/verify-ball.mjs` | 51 项：注册协议、`ctx.ball` 服务契约、形象渲染与本地素材探测、拖动、面板托管、配置卡片、卸载 |
-| `test/verify-ball-host.mjs` | 21 项：**Host 半边的本地素材路由**——文件优先级、content-type、405 方法守卫、空目录 404、HEAD 不带 body |
+| `test/verify-ball-host.mjs` | 27 项：**Host 半边的形象路由**——自带素材的字节与 content-type、文件优先级、405 方法守卫、无素材 404、HEAD 不带 body |
 | `test/verify-glass.mjs` | 59 项：**带球 / 不带球两种宿主形态**、主题令牌层、背景层、面板交互、配置卡片、卸载 |
 | `test/verify-together.mjs` | 15 项：把两个包加载进同一个文档，用**真实的 `ctx.ball` 服务**驱动玻璃面板——验证跨插件契约本身 |
 
-共 146 项。它们验证**行为与协议**，不验证视觉观感。磨砂强度合不合意得在真机上对着自己的壁纸调。
+共 152 项。它们验证**行为与协议**，不验证视觉观感。磨砂强度合不合意得在真机上对着自己的壁纸调。
 
 ---
 
@@ -163,18 +163,24 @@ npm test        # 三个 jsdom 验证脚本
 
 ## 许可
 
-代码 [MIT](LICENSE)。
+**本仓库不是单一许可**，按文件分层：
+
+| 范围 | 许可 |
+|---|---|
+| 代码（`packages/**/lib/**`、`cordis.patch.yml`、`scripts/**`、`test/**`、文档） | **[MIT](LICENSE)** |
+| `packages/dsh-client-ui-ball/assets/mascot.png` | **[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.zh)**（署名 · **禁止商用** · 相同方式共享） |
+
+`mascot.png` 是社区「鲸鱼娘」形象：角色原型为画师**上善无形**的原创 OC「溟月」，
+**ZipZipPipe** 做了 DeepSeek 元素二创，**QYQCAMIAO** 做了去伪影修复。
+完整来源、署名、本仓库所做的修改，见 **[`NOTICE.md`](NOTICE.md)**。
+
+CC 的 ShareAlike **不会传染到代码**——图片与代码是彼此独立的作品，同仓属于聚合而非演绎，
+所以「代码 MIT + 素材 CC BY-NC-SA」是合法且常见的组合。
+
+**要以纯 MIT 分发，或者要商用**：删掉 `packages/dsh-client-ui-ball/assets/mascot.png` 即可。
+悬浮球会回落到**内置的原创 SVG**——那只鲸鱼兜帽造型是本项目自己画的，随 MIT 分发，
+也不是上述角色、不是 DeepSeek 官方素材。
 
 两个插件与 DeepSeek 官方无隶属关系。
 
-**关于「鲸鱼娘」：** 社区的鲸鱼娘形象是一个有明确许可链的二创角色（原型为画师上山无星的「明月」，素材 **CC BY-NC-SA 4.0**：署名 / 禁止商用 / 相同方式共享），与本仓库的 MIT **直接冲突**。因此本仓库**不分发**该素材，也不照着它重绘。
-
-要使用它，把它放进悬浮球的本地素材目录即可——那个目录在 `.gitignore` 里，**素材永远不进仓库历史**：
-
-```
-<profile>/node_modules/dsh-client-ui-ball/assets/mascot.png
-```
-
-细节与许可链说明见 [`dsh-client-ui-ball/README.md`](packages/dsh-client-ui-ball/README.md#四形象内置图本地素材以及鲸鱼娘) 与 [`assets/README.md`](packages/dsh-client-ui-ball/assets/README.md)。
-
-悬浮球内置的 Q 版鲸鱼造型 SVG 是**为本项目原创绘制**的，不是 DeepSeek 官方素材，也不是上述角色。
+> 若你是权利人并认为此处使用不妥，请开 Issue，我们会立即移除该图片。

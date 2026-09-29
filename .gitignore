@@ -8,9 +8,11 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Local mascot artwork. Anything dropped beside the ball package is picked up
-# as its default appearance, and is deliberately kept out of repository history
-# so artwork under someone else's licence never travels with this MIT code.
-# See packages/dsh-client-ui-ball/assets/README.md.
+# Mascot artwork. The ball serves whatever sits beside its package, so anything
+# dropped in becomes the default appearance. Everything here is ignored except
+# the files this repository ships on purpose, so artwork you add locally stays
+# out of history while the committed mascot and its notices remain tracked.
+# See packages/dsh-client-ui-ball/assets/README.md and NOTICE.md.
 packages/*/assets/*
 !packages/*/assets/README.md
+!packages/*/assets/mascot.png

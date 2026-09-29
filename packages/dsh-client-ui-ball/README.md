@@ -123,28 +123,33 @@ export function apply(ctx) {
 
 ---
 
-## 四、形象：内置图、本地素材、以及「鲸鱼娘」
+## 四、形象
 
 ### 三种来源，优先级从高到低
 
 1. **设置里的「形象」**（URL / `data:` / 一个表情符号）
-2. **`assets/mascot.*` 本地素材** —— 见 [`assets/README.md`](assets/README.md)。放进**已安装副本**的这个目录，刷新页面即可成为默认形象
-3. **内置形象** —— 本插件原创的 Q 版鲸鱼造型 SVG（蓝色鲸鱼兜帽、头顶尾鳍、喷水、腮红），flat 色块，小尺寸下依然清晰
+2. **`assets/mascot.*`** —— 本仓库自带 `assets/mascot.png`（社区「鲸鱼娘」），你没动过就用它
+3. **内置形象** —— 本插件原创的 Q 版鲸鱼造型 SVG（蓝色鲸鱼兜帽、头顶尾鳍、喷水、腮红），flat 色块，小尺寸下依然清晰。删掉 `mascot.png` 时会回落到它
 
-第 2 条是为「鲸鱼娘」这类**带自己许可的素材**准备的：`assets/` 在 `.gitignore` 里，**素材永远不进仓库历史**。
+换成你自己的图：把文件放进**已安装副本**的 `assets/`（命名见 [`assets/README.md`](assets/README.md)），刷新页面。
+放进去的图被 `.gitignore` 忽略，**不会进入仓库历史**。
 
-### 为什么内置的不是「鲸鱼娘」
+### 自带的「鲸鱼娘」是什么，以及它的许可
 
 社区的**鲸鱼娘不是 DeepSeek 官方吉祥物**，而是一个有明确许可链的二创角色：
 
-- 原型是画师**上山无星**用 AI 工具创作的原创角色**「明月」**（2025 年 6 月发布），特征是渐变蓝长发、呆毛、鲸鱼状头鳍、蓝眼、大鲸尾；
-- 2026 年 4 月，B 站用户 **ZipZipPipe** 给它加上 DeepSeek 元素改成深蓝白女仆装，这才是目前流传的版本；
+- 原型是画师**上善无形**用 AI 工具创作的原创 OC**「溟月」**（2025 年 6 月发布），特征是渐变蓝长发、呆毛、鲸鱼状头鳍、蓝眼、大鲸尾；
+- 2026 年 4 月，B 站用户 **ZipZipPipe** 用 GPT Image 2 给它加上 DeepSeek 元素、改成深蓝白女仆装，这才是目前流传的版本；
 - DeepSeek 官方只把**人格设定**做成了产品彩蛋（`【PERSONA_LOAD】CETACEA_LOLI`），**没有承认它是官方吉祥物**，也没有主张美术版权；
-- **素材许可是 CC BY-NC-SA 4.0**：必须署名、**禁止商用**、演绎作品必须同协议共享（见 [36氪的梳理](https://eu.36kr.com/en/p/3947452108789632)）。
+- **素材许可是 CC BY-NC-SA 4.0**：署名、**禁止商用**、演绎作品同协议共享（见 [36氪的梳理](https://eu.36kr.com/en/p/3947452108789632)）。
 
-NC + SA 与本仓库的 MIT **直接冲突**。所以本仓库**不分发**该素材，也不照着它重绘（那属于演绎作品）。想用就放进 `assets/`——你自己本地用完全没问题，想公开分发时由你自己决定许可与署名。
+所以本仓库采用**分层许可**：**代码 MIT，`assets/mascot.png` 单独按 CC BY-NC-SA 4.0**。
+CC 的 ShareAlike **不会传染到代码**——图片与代码是彼此独立的作品，同仓属于聚合而非演绎。
+完整署名与条款见根目录 [`NOTICE.md`](../../NOTICE.md)。
 
-> DSH 社区已有多个鲸鱼娘桌宠/皮肤项目采用同样的做法（代码与素材分开授权），例如 [dsh-whale-girl-live2d](https://github.com/Andersen216/dsh-whale-girl-live2d)、[dsh-deep-whale](https://github.com/Small-tailqwq/dsh-deep-whale)、[codex-deepseek-pet](https://github.com/YunYueSama/codex-deepseek-pet)。
+**要以纯 MIT 分发或商用**：删掉 `assets/mascot.png` 即可，悬浮球回落到内置的原创 SVG（那只随 MIT 分发）。
+
+> DSH 社区普遍采用同样的分层做法，例如 [dsh-whale-girl-live2d](https://github.com/Andersen216/dsh-whale-girl-live2d)（代码 MIT / 素材 CC BY-NC-SA 4.0 / 独立 NOTICE）、[dsh-deep-whale](https://github.com/Small-tailqwq/dsh-deep-whale)、[codex-deepseek-pet](https://github.com/YunYueSama/codex-deepseek-pet)。
 
 ---
 
@@ -162,7 +167,7 @@ NC + SA 与本仓库的 MIT **直接冲突**。所以本仓库**不分发**该�
 
 ```sh
 node test/verify-ball.mjs        # 51 项：协议、服务、形象与本地素材探测、拖动、面板托管、卡片、卸载
-node test/verify-ball-host.mjs   # 21 项：Host 半边的本地素材路由（优先级、content-type、405、404、HEAD）
+node test/verify-ball-host.mjs   # 27 项：Host 半边的形象路由（自带素材、优先级、405、404、HEAD）
 node test/verify-together.mjs    # 15 项：与 dsh-client-ui-glass 的真实交叉集成
 ```
 
