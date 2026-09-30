@@ -1012,8 +1012,13 @@ window.__ModuleLoader__.load({
           // form code still gets a working one.
           const declaration = model.descriptor?.settings
           if (!drawn && declaration !== undefined) {
-            const binding = bindings.get(id) ?? bindModuleSettings(ctx, declaration)
-            bindings.set(id, binding)
+            // This plugin's own module is edited through its own bridge, not
+            // through a namespace. A composition with no host settings service
+            // has no namespace to write, and the bridge is what actually draws
+            // the ball — routing its panel through the namespace left the form
+            // writing somewhere the ball never read.
+            const binding = model.id === PLUGIN_ID ? ownBinding() : (bindings.get(id) ?? bindModuleSettings(ctx, declaration))
+            if (model.id !== PLUGIN_ID) bindings.set(id, binding)
             disposeActive = createForm(body, { fields: declaration.fields, settings: binding, localize })
             drawn = true
           }
@@ -1127,6 +1132,24 @@ window.__ModuleLoader__.load({
        *
        * @returns {string} the report.
        */
+      /**
+       * This plugin's own settings, in the shape the form renderer expects.
+       *
+       * The form is written against a namespace binding, but the ball's own
+       * appearance is held by its local bridge. Presenting that bridge in the
+       * same shape lets one renderer serve both without the ball depending on a
+       * settings service the composition may not have.
+       *
+       * @returns {object} a namespace-shaped reader and writer.
+       */
+      const ownBinding = () => ({
+        read: () => settings.get(),
+        write: (key, value) => { settings.commit(key, value) },
+        reset: () => { for (const key of Object.keys(DEFAULTS)) settings.commit(key, DEFAULTS[key]) },
+        subscribe: (listener) => settings.subscribe(listener),
+        health: () => ({ status: 'local', writable: true, error: null, scope: true }),
+      })
+
       const diagnose = () => {
         const lines = []
         const put = (label, value) => lines.push(`${label.padEnd(20)}${value}`)
