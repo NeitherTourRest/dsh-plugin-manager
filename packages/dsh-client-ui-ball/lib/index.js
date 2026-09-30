@@ -65,6 +65,15 @@ export const MASCOT_FILES = [
 export const BALL_SIZE_MIN = 28
 export const BALL_SIZE_MAX = 96
 
+/**
+ * Default ball size, in px.
+ *
+ * This must equal the browser half's `DEFAULTS.size`. The client treats a
+ * resolved value equal to the default as "nobody set this", so a mismatch here
+ * makes the schema default look like a user choice and overwrite the local one.
+ */
+export const DEFAULT_BALL_SIZE = 72
+
 /** Panel widths accepted by the schema, in px. */
 export const SURFACE_WIDTH_MIN = 240
 export const SURFACE_WIDTH_MAX = 480
@@ -93,7 +102,7 @@ export const POSITION_UNSET = -1
 /** Durable ball schema; also the wire envelope the browser scope validates against. */
 export const BallSettingsSchema = z.object({
   image: z.string().default(''),
-  size: z.number().step(1).min(BALL_SIZE_MIN).max(BALL_SIZE_MAX).default(52),
+  size: z.number().step(1).min(BALL_SIZE_MIN).max(BALL_SIZE_MAX).default(DEFAULT_BALL_SIZE),
   opacity: z.number().step(1).min(20).max(100).default(92),
   motion: z.union([...BALL_MOTIONS]).default('breathe'),
   surfaceWidth: z.number().step(1).min(SURFACE_WIDTH_MIN).max(SURFACE_WIDTH_MAX).default(300),

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Verification harness for packages/dsh-client-ui-ball.
  * Loads the hand-written browser half inside jsdom against a mocked Cordis
  * client context, and asserts the registration protocol, the ctx.ball service
@@ -353,13 +353,25 @@ scopeListener()
 check('a field the user layer overrides is adopted', host.style.getPropertyValue('--dshb-size') === '72px', host.style.getPropertyValue('--dshb-size'))
 check('the adopted motion reaches the host', host.dataset.motion === 'sway', host.dataset.motion)
 
-// A resolved section nobody wrote must not become the source of truth.
+// The schema default is the "nobody set this" marker, and the Host schema
+// default is kept equal to DEFAULTS for exactly that reason. A section still
+// carrying the default must not become the source of truth.
 setCalls.length = 0
 delete scopeUser.size
-scopeValue.size = 52
+scopeValue.size = 72
 scopeListener()
-check('a field absent from the user layer keeps the working copy',
+check('a section still at its schema default keeps the working copy',
   host.style.getPropertyValue('--dshb-size') === '72px', host.style.getPropertyValue('--dshb-size'))
+
+// A value that differs from the default was set by someone. The generated form
+// writes this namespace directly, so the ball's own mirror has to adopt it or a
+// change made in the ball's own panel never reaches the ball.
+scopeValue.size = 90
+scopeListener()
+check('a namespace write reaches the ball',
+  host.style.getPropertyValue('--dshb-size') === '90px', host.style.getPropertyValue('--dshb-size'))
+scopeValue.size = 72
+scopeListener()
 
 // --- the artwork must not hijack the ball's own drag ------------------------
 {

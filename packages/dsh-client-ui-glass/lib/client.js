@@ -1,4 +1,4 @@
-/**
+﻿/**
  * dsh-client-ui-glass — browser half (frosted-glass skin for the dsh GUI).
  *
  * Hand-written closure-factory bundle: the dsh client module system executes
@@ -445,7 +445,6 @@ html[data-dshw-clear] .dshw-backdrop {
       const adopt = (snapshot) => {
         const section = snapshot.value
         if (typeof section !== 'object' || section === null) return
-        const user = typeof snapshot.user === 'object' && snapshot.user !== null ? snapshot.user : {}
         const next = { ...state }
         let changed = false
         for (const key of Object.keys(DEFAULTS)) {
@@ -453,14 +452,10 @@ html[data-dshw-clear] .dshw-backdrop {
           if (typeof value !== typeof DEFAULTS[key]) continue
           if (key === 'fit' && !FITS.includes(value)) continue
           const local = next[key]
-          // A Host value equal to the schema default carries no user intent:
-          // either nobody set the field, or the document never learned our
-          // value. The local copy holds only a user choice or the default, so
-          // taking the default here can only destroy a choice — a picked
-          // wallpaper, most expensively. Ours goes up instead, which is also
-          // what makes it durable.
-          const carriesIntent = value !== DEFAULTS[key] || local === DEFAULTS[key]
-          if (carriesIntent && key in user) {
+          // The schema default means nobody set the field; anything else was
+          // set by someone, including the generated form writing this namespace
+          // directly, and is adopted here.
+          if (value !== DEFAULTS[key]) {
             if (local !== value) { next[key] = value; changed = true }
           } else if (local !== DEFAULTS[key] && !migrated.has(key)) {
             migrated.add(key)

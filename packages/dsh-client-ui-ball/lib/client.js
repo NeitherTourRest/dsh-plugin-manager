@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Shared floating ball — browser half.
  *
  * One draggable mascot button that hosts the settings panel of every other dsh
@@ -512,18 +512,23 @@ window.__ModuleLoader__.load({
        * Fold a Host snapshot into the working copy.
        *
        * `snapshot.value` is schema-resolved, so it carries every field even when
-       * nobody ever set one. Adopting it wholesale would erase a value this
-       * client already holds locally, which is exactly what a build that stored
-       * preferences locally leaves behind. So only a field the raw user layer
-       * actually overrides is adopted; a local value the Host has never seen is
-       * pushed up instead, making it durable and shared rather than dropped.
+       * nobody ever set one. The schema default is this form's "nobody set this"
+       * marker — the Host schema default is kept equal to DEFAULTS for exactly
+       * that reason — so a resolved value that differs from it was set by
+       * someone and is adopted, whether that was this client, another surface,
+       * or the generated form writing the namespace directly.
+       *
+       * Deciding on the raw user layer instead drops a write the Host has not
+       * reported yet, which is how a change made in the ball's own panel failed
+       * to reach the ball. A local value the Host has never seen goes up, making
+       * it durable and shared rather than dropped.
        *
        * @param {object} snapshot - one `settingsScope` snapshot.
        */
       const adopt = (snapshot) => {
         const section = snapshot.value
         if (typeof section !== 'object' || section === null) return
-        const user = typeof snapshot.user === 'object' && snapshot.user !== null ? snapshot.user : {}
+
         const next = { ...state }
         let changed = false
         for (const key of Object.keys(DEFAULTS)) {
@@ -536,8 +541,7 @@ window.__ModuleLoader__.load({
           // value. The local copy holds only a user choice or the default, so
           // taking the default here can only destroy a choice — ours goes up
           // instead, which is also what makes it durable.
-          const carriesIntent = value !== DEFAULTS[key] || local === DEFAULTS[key]
-          if (carriesIntent && key in user) {
+          if (value !== DEFAULTS[key]) {
             if (local !== value) { next[key] = value; changed = true }
           } else if (local !== DEFAULTS[key] && !migrated.has(key)) {
             migrated.add(key)
