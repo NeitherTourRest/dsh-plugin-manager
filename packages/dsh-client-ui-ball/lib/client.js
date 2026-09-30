@@ -127,6 +127,7 @@ window.__ModuleLoader__.load({
         packDefault: '默认',
         packDefaultHint: '仓库自带的形象（assets/mascot.*），没有则用内置 SVG',
         packGallery: '形象包',
+        diagnostics: '诊断',
         imagePick: '选择图片',
         imageClear: '恢复内置',
         size: '大小',
@@ -150,6 +151,7 @@ window.__ModuleLoader__.load({
         packDefault: 'Default',
         packDefaultHint: 'The artwork shipped beside the package (assets/mascot.*), else the built-in SVG',
         packGallery: 'Packs',
+        diagnostics: 'Diagnostics',
         imagePick: 'Choose image',
         imageClear: 'Restore built-in',
         size: 'Size',
@@ -342,6 +344,14 @@ window.__ModuleLoader__.load({
 .actions button:focus-visible { outline: 2px solid #6ea8fe; outline-offset: 1px; }
 
 .notice { margin: 8px 0; color: #a9adb4; font-size: 12px; line-height: 1.65; }
+
+/* The diagnostics report: selectable, monospaced, and scrollable. */
+.dump {
+  margin: 0; padding: 9px 10px; border-radius: 9px; background: rgba(0, 0, 0, 0.3);
+  color: #cfd3d9; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-all;
+  max-height: 54vh; overflow: auto; user-select: text;
+}
 
 .body { padding: 0 12px 13px; overflow-y: auto; }
 .body[hidden] { display: none; }
@@ -1104,6 +1114,83 @@ window.__ModuleLoader__.load({
 
       const toggle = () => { if (surface.hidden) open(); else close() }
 
+      /**
+       * Everything needed to diagnose this composition, as text.
+       *
+       * This plugin runs where it cannot be observed: no console, no inspector,
+       * only what a user can read off the screen and retype. Guessing across that
+       * gap cost several wrong fixes, so the whole state is dumped at once
+       * instead of one bit per round trip.
+       *
+       * @returns {string} the report.
+       */
+      const diagnose = () => {
+        const lines = []
+        const put = (label, value) => lines.push(`${label.padEnd(20)}${value}`)
+        put('frame', ballState)
+        put('local mascot', localMascot)
+        put('packs', String(packs.length))
+        put('directory', `${String(directory.modules.length)} module(s), protocol ${String(directory.protocol)}, error ${String(directory.error)}`)
+        put('registry', [...entries.keys()].join(', ') || '(none)')
+        put('manager', managerApi === undefined ? 'absent' : 'present')
+        put('session status', sessionStatus === undefined ? 'absent' : 'present')
+
+        lines.push('', 'services (ctx.get):')
+        for (const name of ['settingsScope', 'locale', 'slots', 'theme', 'remote', 'remote.pluginManager', 'uiSession', 'sessions', 'ball']) {
+          let value
+          try { value = ctx.get(name) } catch (error) { value = `THROWS ${String(error)}` }
+          lines.push(`  ${name.padEnd(22)}${value === undefined ? 'undefined' : 'present'}`)
+        }
+
+        lines.push('', 'settings namespaces:')
+        const service = ctx.get('settingsScope')
+        for (const namespace of ['ui-ball', 'ui-glass']) {
+          if (service === undefined) { lines.push(`  ${namespace}: no settings service`); continue }
+          try {
+            const snapshot = service.bind({ namespace }).getSnapshot()
+            lines.push(`  ${namespace} status=${String(snapshot.status)} writable=${String(snapshot.writable)} revision=${String(snapshot.revision)}`)
+            lines.push(`    user=${JSON.stringify(snapshot.user ?? null)?.slice(0, 220) ?? 'undefined'}`)
+            lines.push(`    value=${JSON.stringify(snapshot.value ?? null)?.slice(0, 280) ?? 'undefined'}`)
+          } catch (error) {
+            lines.push(`  ${namespace}: THROWS ${String(error)}`)
+          }
+        }
+
+        lines.push('', 'document:')
+        const root = document.documentElement
+        lines.push(`  html flags          enabled=${String(root.hasAttribute('data-dshw-enabled'))} clear=${String(root.hasAttribute('data-dshw-clear'))}`)
+        const layer = document.querySelector('.dshw-backdrop')
+        if (layer === null) {
+          lines.push('  backdrop            MISSING')
+        } else {
+          const style = window.getComputedStyle(layer)
+          const rect = layer.getBoundingClientRect()
+          lines.push(`  backdrop            display=${style.display} position=${style.position} z=${style.zIndex} visibility=${style.visibility} opacity=${style.opacity}`)
+          lines.push(`  backdrop rect       ${String(Math.round(rect.width))}x${String(Math.round(rect.height))}`)
+          const art = layer.querySelector('.dshw-backdrop__image')
+          lines.push(`  wallpaper inline    ${String((art?.style.backgroundImage ?? '').length)} chars, size=${String(art?.style.backgroundSize ?? '')}`)
+          const computed = art === null ? '' : window.getComputedStyle(art).backgroundImage
+          lines.push(`  wallpaper computed  ${String(computed.length)} chars`)
+        }
+        const sheets = [...document.querySelectorAll('style[data-plugin]')].map(tag => tag.dataset.pluginCss ?? tag.dataset.plugin)
+        lines.push(`  sheets              ${sheets.join(', ') || '(none)'}`)
+        const shell = document.querySelector('#root')
+        if (shell !== null) {
+          const style = window.getComputedStyle(shell)
+          lines.push(`  #root               background=${style.backgroundColor} filter=${style.backdropFilter || style.webkitBackdropFilter || 'none'}`)
+        }
+
+        lines.push('', 'storage:')
+        try {
+          const keys = Object.keys(window.localStorage).filter(key => key.startsWith('dsh'))
+          if (keys.length === 0) lines.push('  (no dsh keys)')
+          for (const key of keys) lines.push(`  ${key.padEnd(28)}${String(window.localStorage.getItem(key)).length} chars`)
+        } catch (error) {
+          lines.push(`  THROWS ${String(error)}`)
+        }
+        return lines.join('\n')
+      }
+
       // The registry is the whole cross-plugin contract. The service is a thin
       // face over it so the UI can read the same map without handing
       // contributors mutation powers they must not have.
@@ -1256,6 +1343,22 @@ window.__ModuleLoader__.load({
       // Provided during apply, so a plugin that injects `ball` is ordered after
       // this one regardless of composition order.
       ctx.provide(SERVICE, service)
+
+      // A reserved entry reporting this composition's state. It is the only
+      // observability this plugin has: no console, no inspector, and a user who
+      // can only retype what is on screen.
+      ctx.effect(() => service.register({
+        id: 'ui-ball-diagnostics',
+        label: () => translate('diagnostics'),
+        icon: '🩺',
+        order: 9999,
+        render(container) {
+          const pre = document.createElement('pre')
+          pre.className = 'dump'
+          pre.textContent = diagnose()
+          container.append(pre)
+        },
+      }), 'ui-ball: diagnostics entry')
 
       // The manager announces its own changes; a reconnect may have changed the
       // composition without an announcement, so both refresh the directory.

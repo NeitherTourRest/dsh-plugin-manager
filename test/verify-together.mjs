@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Integration harness for the dsh-client-ui-ball ↔ dsh-client-ui-glass pair.
  *
  * Both browser halves are loaded into ONE document against a shared mocked
@@ -123,7 +123,9 @@ check('the ball provides ctx.ball before glass applies', typeof ball?.register =
 load(GLASS, 'dsh-client-ui-glass')
 
 // ── the contract ────────────────────────────────────────────────────────────
-const entries = ball.entries()
+// The ball always contributes its own diagnostics panel; this asserts the
+// contract between the two plugins, so it looks at the panels they registered.
+const entries = ball.entries().filter(entry => entry.id !== 'ui-ball-diagnostics')
 check('the glass panel appears in the ball registry', entries.map(e => e.id).join() === 'ui-glass',
   JSON.stringify(entries))
 check('the ball resolves the glass label through the glass dictionary',
@@ -138,9 +140,13 @@ const ballShadow = ballHost.shadowRoot
 const fab = ballShadow.querySelector('.ball')
 fab.dispatchEvent(pointer('pointerdown', 900, 700))
 fab.dispatchEvent(pointer('pointerup', 900, 700))
-check('one registered panel opens straight onto its page',
-  ballShadow.querySelector('.surface').hasAttribute('hidden') === false
-  && ballShadow.querySelector('.menu').hasAttribute('hidden'))
+check('a press opens the surface', ballShadow.querySelector('.surface').hasAttribute('hidden') === false)
+// The ball contributes a diagnostics panel of its own, so two panels exist and
+// the press lands on the menu. The glass panel is opened by id.
+ball.open('ui-glass')
+check('the glass panel opens from the menu',
+  ballShadow.querySelector('.menu').hasAttribute('hidden')
+  && ballShadow.querySelector('.surface').hasAttribute('hidden') === false)
 
 const body = ballShadow.querySelector('.body')
 const panelShadow = body.firstElementChild?.shadowRoot

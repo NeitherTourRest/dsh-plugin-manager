@@ -258,6 +258,11 @@ const host = doc.querySelector('body > .dshb-host')
 check('mounts the ball host under body', host !== null)
 check('provides the ctx.ball service', provided.has('ball'))
 const ball = provided.get('ball')
+// The ball always contributes its own diagnostics panel; the harness filters it
+// out so each assertion can speak about the registrations it made itself.
+const DIAGNOSTICS = 'ui-ball-diagnostics'
+const panels = () => ball.entries().filter(entry => entry.id !== DIAGNOSTICS)
+const menuRows = () => [...menu.children].filter(row => row.dataset.entry !== DIAGNOSTICS)
 
 const shadow = host.shadowRoot
 const fab = shadow.querySelector('.ball')
@@ -299,7 +304,7 @@ const draw = (container) => { container.append(window.document.createElement('i'
 const firstDispose = ball.register({ id: 'a', label: '甲', icon: '🅰', order: 1, render: draw })
 try { ball.register({ id: 'a', render: draw }) } catch (error) { duplicate = error }
 check('register rejects a duplicate id', duplicate?.name === 'Error', String(duplicate))
-check('entries() lists the registration', ball.entries().map(e => e.id).join() === 'a', JSON.stringify(ball.entries()))
+check('entries() lists the registration', panels().map(e => e.id).join() === 'a', JSON.stringify(panels()))
 
 let rendered = null
 const disposeB = ball.register({
@@ -310,14 +315,14 @@ const disposeB = ball.register({
     return () => { container.textContent = '' }
   },
 })
-check('entries() sorts by order', ball.entries().map(e => e.id).join() === 'a,b', JSON.stringify(ball.entries()))
+check('entries() sorts by order', panels().map(e => e.id).join() === 'a,b', JSON.stringify(panels()))
 
 // --- opening: two entries show the menu -------------------------------------
 fab.dispatchEvent(pointer('pointerdown', 900, 700))
 fab.dispatchEvent(pointer('pointerup', 900, 700))
 check('a press opens the surface', !surface.hasAttribute('hidden'))
-check('two entries render a menu', menu.children.length === 2, String(menu.children.length))
-check('menu rows carry their ids', [...menu.children].map(c => c.dataset.entry).join() === 'a,b')
+check('two entries render a menu', menuRows().length === 2, String(menuRows().length))
+check('menu rows carry their ids', menuRows().map(c => c.dataset.entry).join() === 'a,b')
 check('menu rows use the resolved label', menu.children[1].textContent.includes('乙'), menu.children[1].textContent)
 
 menu.children[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
@@ -333,12 +338,17 @@ check('ball.close() hides the surface', surface.hasAttribute('hidden'))
 
 // --- a single entry opens straight onto its panel ---------------------------
 firstDispose()
-check('disposing a registration removes it', ball.entries().map(e => e.id).join() === 'b')
+check('disposing a registration removes it', panels().map(e => e.id).join() === 'b')
+// The diagnostics panel is always registered, so a composition never holds a
+// single panel and `open()` always shows the menu. Opening by id still reaches
+// the panel directly.
 ball.open()
-check('one entry opens straight onto its panel', !menu.hidden === false && rendered.container.textContent === 'panel-b')
+check('the menu lists every panel', menu.hidden === false)
+ball.open('b')
+check('ball.open(id) opens that panel directly', rendered.container.textContent === 'panel-b')
 ball.close()
 disposeB()
-check('the registry empties', ball.entries().length === 0)
+check('the registry empties', panels().length === 0)
 
 // --- appearance settings ----------------------------------------------------
 const ballElement = shadow.querySelector('.ball')
@@ -432,7 +442,7 @@ check('the settings scope was bound for the declared namespace', boundNamespace 
 const disposeLiveBall = ball.register({ id: 'ui-ball', label: '球', icon: '◉', order: 0, render: draw })
 
 ball.open()
-const rows = [...menu.children]
+const rows = menuRows()
 check('declared modules join the menu in declared order',
   rows.map(row => row.dataset.entry).join() === 'ui-ball,ui-glass,broken',
   rows.map(row => row.dataset.entry).join())
@@ -500,7 +510,7 @@ const disposeGlassByName = ball.register({
   id: 'dsh-client-ui-glass', label: '磨砂外观', icon: '◐', order: 10, render: draw,
 })
 ball.open()
-const byName = [...menu.children]
+const byName = menuRows()
 check('a panel registered under the package name merges into its declared module',
   byName.length === 3 && byName.every(row => row.dataset.entry !== 'dsh-client-ui-glass'),
   byName.map(row => row.dataset.entry).join())
