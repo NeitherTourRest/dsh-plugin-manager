@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Verification harness for packages/dsh-client-ui-glass.
  * Loads the hand-written browser half inside jsdom against a mocked Cordis
  * client context, twice: once with the shared ball present and once without.
@@ -270,6 +270,23 @@ const report = (label, checks) => {
 
   disposePanel()
   check('leaving the panel removes it', slot.childElementCount === 0)
+
+  // The shell owns the document it boots into and rewrites parts of it after
+  // this plugin activates: that is why the skin can be missing on a fresh start
+  // yet appear after a disable/enable cycle. Everything it depends on has to
+  // come back on its own.
+  const bootLayer = doc.querySelector('.dshw-backdrop')
+  check('the backdrop layer is mounted', bootLayer !== null)
+  if (bootLayer !== null) {
+    bootLayer.remove()
+    doc.documentElement.removeAttribute('data-dshw-enabled')
+    doc.querySelector('style[data-plugin-css="dsh-client-ui-glass/glass.css"]')?.remove()
+    await new Promise(resolve => { setTimeout(resolve, 0) })
+    check('a detached backdrop layer is put back', bootLayer.isConnected)
+    check('a stripped visibility flag is restored', doc.documentElement.hasAttribute('data-dshw-enabled'))
+    check('a removed stylesheet is put back',
+      doc.querySelector('style[data-plugin-css="dsh-client-ui-glass/glass.css"]') !== null)
+  }
 
   // Plugins-page card. With the ball present the ball registers one from this
   // package's `dsh.ball` declaration, so glass must NOT register its own: the

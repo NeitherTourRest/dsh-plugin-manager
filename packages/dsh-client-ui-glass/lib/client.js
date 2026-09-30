@@ -807,18 +807,43 @@ html[data-dshw-clear] .dshw-backdrop {
         paint()
         const unsubscribe = settings.subscribe(paint)
 
-        // The shell may replace its own mount point while it boots, which
-        // detaches this layer and silently drops the wallpaper — the skin is
-        // gone on the next start but returns the moment you touch a setting.
-        // Nothing tells a plugin that happened, so the layer puts itself back.
-        const keeper = new MutationObserver(() => {
-          if (backdrop.isConnected) return
-          ;(document.body ?? document.documentElement).append(backdrop)
-          paint()
+        // The shell owns the document it boots into and rewrites parts of it
+        // after this plugin activates. That is why the skin can be missing on a
+        // fresh start yet appear after a disable/enable cycle: re-activation
+        // mounts into a document that has settled. Both things the skin depends
+        // on can be taken away, so both are watched and put back:
+        //
+        //   - the layer element itself, detached when a mount point is replaced
+        //   - the two flags on <html> that the sheet keys visibility on
+        const restore = () => {
+          if (!staticTag.isConnected) document.head.append(staticTag)
+          if (!variableTag.isConnected) document.head.append(variableTag)
+          if (!backdrop.isConnected) (document.body ?? document.documentElement).append(backdrop)
+          const root = document.documentElement
+          const state = settings.get()
+          const enabled = state.enabled === true
+          const clear = safeUrl((state.wallpaper ?? '').trim()) === ''
+          if (root.hasAttribute('data-dshw-enabled') !== enabled || root.hasAttribute('data-dshw-clear') !== clear) {
+            paint()
+          }
+        }
+        const keeper = new MutationObserver(restore)
+        keeper.observe(document.documentElement, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['data-dshw-enabled', 'data-dshw-clear'],
         })
-        keeper.observe(document.documentElement, { childList: true, subtree: true })
+        // Boot churn need not produce a mutation this observer sees, so the same
+        // check runs on a timer until the document has settled.
+        let ticks = 0
+        const bootWatch = setInterval(() => {
+          restore()
+          if (++ticks >= 40) clearInterval(bootWatch)
+        }, 250)
 
         return () => {
+          clearInterval(bootWatch)
           keeper.disconnect()
           staticTag.remove()
           variableTag.remove()
