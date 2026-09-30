@@ -556,18 +556,22 @@ window.__ModuleLoader__.load({
         publish()
       }
 
-      const service = ctx.get('settingsScope')
-      if (service !== undefined) {
-        scope = service.bind({ namespace: NAMESPACE })
+      // Injected, not fetched: `ctx.get` during apply runs before the settings
+      // plugin has activated, so it returns undefined and the namespace is
+      // permanently unreachable — which is why nothing this plugin ever set
+      // reached the Host document.
+      ctx.inject(['settingsScope'], (scopeCtx) => {
+        scope = scopeCtx.settingsScope.bind({ namespace: NAMESPACE })
         const sync = () => {
           const snapshot = scope.getSnapshot()
           // 'loading' leaves the local copy in place, and 'unavailable' keeps
           // it permanently — which is what makes a Host-less client still work.
           if (snapshot.status === 'ready') adopt(snapshot)
         }
-        ctx.effect(() => scope.subscribe(sync), 'ui-ball: settings scope')
+        scopeCtx.effect(() => scope.subscribe(sync), 'ui-ball: settings scope')
         sync()
-      }
+        return () => { scope = null }
+      })
 
       const apply2 = (field, value, durable) => {
         state = { ...state, [field]: value }
@@ -1327,10 +1331,10 @@ window.__ModuleLoader__.load({
       const fields = declaration.fields
       const defaults = Object.fromEntries(fields.map(field => [field.key, fieldDefault(field)]))
       const listeners = new Set()
-      const service = ctx.get('settingsScope')
-      const scope = service === undefined ? null : service.bind({ namespace: declaration.namespace })
+      /** Bound once the settings plugin activates; see the injection below. */
+      let scope = null
       /** Last observed namespace state, reported in the panel so a dead form says why. */
-      let status = scope === null ? 'no settings service' : 'unknown'
+      let status = 'waiting for the settings service'
       let writable = false
       let lastError = null
 
@@ -1351,9 +1355,15 @@ window.__ModuleLoader__.load({
         return values
       }
 
-      if (scope !== null) {
-        ctx.effect(() => scope.subscribe(() => { notify() }), `ui-ball: ${declaration.namespace} settings`)
-      }
+      // Injected rather than fetched: this binding is created while the module
+      // directory loads, which is well before the settings plugin activates, and
+      // `ctx.get` would return undefined and stay that way.
+      ctx.inject(['settingsScope'], (scopeCtx) => {
+        scope = scopeCtx.settingsScope.bind({ namespace: declaration.namespace })
+        scopeCtx.effect(() => scope.subscribe(() => { notify() }), `ui-ball: ${declaration.namespace} settings`)
+        notify()
+        return () => { scope = null; status = 'waiting for the settings service' }
+      })
 
       return {
         read,

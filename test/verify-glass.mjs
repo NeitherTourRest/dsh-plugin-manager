@@ -135,7 +135,10 @@ function load({ withBall, platform, seed, hostUser, hostValue }) {
         } })
         return () => {}
       }
-      callback(ctx)
+      // Cordis hands the resolved services over as context properties.
+      const props = {}
+      if (list.includes('settingsScope')) props.settingsScope = ctx.get('settingsScope')
+      callback({ ...ctx, ...props })
       return () => {}
     },
     locale: {

@@ -470,18 +470,21 @@ html[data-dshw-clear] .dshw-backdrop {
         publish()
       }
 
-      const service = ctx.get('settingsScope')
-      if (service !== undefined) {
-        scope = service.bind({ namespace: NAMESPACE })
+      // Injected, not fetched: `ctx.get` during apply runs before the settings
+      // plugin has activated, so it returns undefined and the namespace stays
+      // unreachable for the life of the page.
+      ctx.inject(['settingsScope'], (scopeCtx) => {
+        scope = scopeCtx.settingsScope.bind({ namespace: NAMESPACE })
         const sync = () => {
           const snapshot = scope.getSnapshot()
           // 'loading' leaves the local copy in place, and 'unavailable' keeps
           // it permanently — which is what makes a Host-less client still work.
           if (snapshot.status === 'ready') adopt(snapshot)
         }
-        ctx.effect(() => scope.subscribe(sync), 'ui-glass: settings scope')
+        scopeCtx.effect(() => scope.subscribe(sync), 'ui-glass: settings scope')
         sync()
-      }
+        return () => { scope = null }
+      })
 
       const applyValue = (field, value, durable) => {
         state = { ...state, [field]: value }
@@ -729,11 +732,16 @@ html[data-dshw-clear] .dshw-backdrop {
       const renderHealth = () => {
         const layer = document.querySelector('.dshw-backdrop')
         const values = settings.get()
+        // The sheets matter as much as the element: without them the layer is an
+        // unstyled div, which looks exactly like no skin at all.
+        const sheets = [...document.querySelectorAll('style[data-plugin="dsh-client-ui-glass"]')]
+          .map(tag => tag.dataset.pluginCss?.split('/').pop() ?? '?')
         health.textContent = [
           `layer ${layer === null ? 'missing' : 'ok'}`,
           `flag ${document.documentElement.hasAttribute('data-dshw-enabled') ? 'ok' : 'missing'}`,
           `on ${values.enabled === true ? 'yes' : 'no'}`,
           `art ${safeUrl((values.wallpaper ?? '').trim()).length}`,
+          `css ${sheets.length === 0 ? 'none' : sheets.join('+')}`,
         ].join(' · ')
       }
 

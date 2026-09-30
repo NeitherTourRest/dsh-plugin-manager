@@ -217,6 +217,7 @@ const ctx = {
   // The injected context exposes the service as a property as well as by name.
   remote: remoteService,
   uiSession: uiSessionService,
+  settingsScope,
   effect(execute, label) {
     const dispose = execute()
     cleanups.push({ label, dispose })

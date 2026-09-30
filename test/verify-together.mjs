@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Integration harness for the dsh-client-ui-ball ↔ dsh-client-ui-glass pair.
  *
  * Both browser halves are loaded into ONE document against a shared mocked
@@ -80,7 +80,8 @@ const makeCtx = () => {
       const resolvable = (name) => name === 'ball' ? provided.has('ball')
         : ['locale', 'slots', 'settingsScope'].includes(name)
       if (list.some(name => !resolvable(name))) return () => {}
-      callback({ ...ctx, ball: provided.get('ball') })
+      // Cordis hands the resolved services over as context properties.
+      callback({ ...ctx, ball: provided.get('ball'), settingsScope: ctx.get('settingsScope') })
       return () => {}
     },
     locale: {
