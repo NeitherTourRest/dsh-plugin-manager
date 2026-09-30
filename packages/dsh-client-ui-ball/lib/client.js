@@ -653,8 +653,7 @@ window.__ModuleLoader__.load({
        * frame is latched here, on this plugin's own falling edge.
        */
       const refreshState = () => {
-        const uiSession = ctx.get('uiSession')
-        const source = uiSession === undefined ? undefined : uiSession.sessionStatus
+        const source = sessionStatus
         if (source === undefined) return
         const values = [...source.getSnapshot().values()]
         const running = values.some(status => status.running === true)
@@ -676,6 +675,14 @@ window.__ModuleLoader__.load({
 
       /** Namespace bindings, one per declared module, created on first use. */
       const bindings = new Map()
+
+      /**
+       * Services that arrive through `ctx.inject`, not `ctx.get`. A Cordis
+       * service property throws on read unless this plugin injected it, so both
+       * are held here once their injection resolves.
+       */
+      let managerApi
+      let sessionStatus
 
       /**
        * Resolve a localized pair against the active language, preferring the
@@ -869,14 +876,16 @@ window.__ModuleLoader__.load({
 
       /**
        * The profile's plugin manager Remote, when this composition has one.
-       * Read lazily: the namespace is mounted by `@deepseek-ai/dsh-api-remotes`,
-       * which a composition may omit.
+       *
+       * Resolved through `ctx.inject`, not `ctx.remote.pluginManager`: a Cordis
+       * service property declared for another plugin throws on read unless this
+       * plugin injected it. Reading it through the injected context is the
+       * documented access, and a composition with no remote simply never runs
+       * the callback, which is what keeps the ball usable without one.
+       *
        * @returns {object | undefined} the manager namespace.
        */
-      const manager = () => {
-        const remote = ctx.get('remote')
-        return remote === undefined ? undefined : remote.pluginManager
-      }
+      const manager = () => managerApi
 
       /**
        * Switch one loader row on or off through the profile's plugin manager.
@@ -1185,25 +1194,6 @@ window.__ModuleLoader__.load({
         // of the menu and the gallery.
         void loadDirectory()
         void loadPacks()
-        const uiSession = ctx.get('uiSession')
-        const statusSource = uiSession === undefined ? undefined : uiSession.sessionStatus
-        if (statusSource !== undefined) {
-          const onStatus = () => { refreshState() }
-          onStatus()
-          const unsubscribeStatus = statusSource.subscribe(onStatus)
-          return () => {
-            unsubscribeStatus()
-            if (doneTimer !== null) { clearTimeout(doneTimer); doneTimer = null }
-            hostStyleTag.remove()
-            host.remove()
-            window.removeEventListener('resize', onResize)
-            unsubscribeSettings()
-            deactivate()
-            entries.clear()
-            watchers.clear()
-            bindings.clear()
-          }
-        }
         return () => {
           hostStyleTag.remove()
           host.remove()
@@ -1216,6 +1206,19 @@ window.__ModuleLoader__.load({
         }
       }, 'ui-ball: mascot and panel surface')
 
+      // The Session UI status is what the mascot's frames are derived from.
+      // Injecting it is also what makes the property readable, and the
+      // subscription lives here rather than in the mount effect: the injection
+      // resolves after that effect runs, so subscribing there would attach to
+      // nothing and the frames would never move.
+      ctx.inject(['uiSession'], (sessionCtx) => {
+        const source = sessionCtx.uiSession.sessionStatus
+        sessionStatus = source
+        refreshState()
+        sessionCtx.effect(() => source.subscribe(() => { refreshState() }), 'ui-ball: session status')
+        return () => { sessionStatus = undefined }
+      })
+
       // Provided during apply, so a plugin that injects `ball` is ordered after
       // this one regardless of composition order.
       ctx.provide(SERVICE, service)
@@ -1223,14 +1226,19 @@ window.__ModuleLoader__.load({
       // The manager announces its own changes; a reconnect may have changed the
       // composition without an announcement, so both refresh the directory.
       ctx.effect(() => {
-        const remote = ctx.get('remote')
-        const disposers = []
-        if (remote !== undefined && typeof remote.$on === 'function') {
-          disposers.push(remote.$on('plugin-manager/changed', () => { void loadDirectory() }))
-        }
-        disposers.push(ctx.on('connection/reset', () => { void loadDirectory() }))
-        return () => { for (const dispose of disposers) dispose() }
+        const dispose = ctx.on('connection/reset', () => { void loadDirectory() })
+        return () => { dispose() }
       }, 'ui-ball: directory invalidation')
+
+      // Injecting the namespace is also what makes it readable: a Cordis
+      // service property throws on access without it.
+      ctx.inject(['remote', 'remote.pluginManager'], (remoteCtx) => {
+        managerApi = remoteCtx.remote.pluginManager
+        remoteCtx.effect(() => remoteCtx.remote.$on('plugin-manager/changed', () => { void loadDirectory() }),
+          'ui-ball: plugin manager changes')
+        renderMenu()
+        return () => { managerApi = undefined }
+      })
 
       ctx.inject(['locale'], (localeCtx) => {
         localeCtx.effect(() => localeCtx.locale.register(LOCALE_NS, STRINGS), 'ui-ball: dictionaries')

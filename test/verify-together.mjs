@@ -74,11 +74,17 @@ const makeCtx = () => {
     on() { return () => {} },
     inject(services, callback) {
       const list = Array.isArray(services) ? services : [services]
-      // Only the ball request depends on another plugin being present; here it is.
+      // Cordis runs the callback only once every named service exists. A
+      // composition here has the ball and the shell's own services, but no
+      // Session UI and no plugin manager, so those requests never resolve.
+      const resolvable = (name) => name === 'ball' ? provided.has('ball')
+        : ['locale', 'slots', 'settingsScope'].includes(name)
+      if (list.some(name => !resolvable(name))) return () => {}
       callback({ ...ctx, ball: provided.get('ball') })
       return () => {}
     },
     locale: {
+      getSnapshot: () => ({ locale: 'zh' }),
       register: (ns, dicts) => { localeDicts.set(ns, dicts); return () => { localeDicts.delete(ns) } },
       bind: (ns) => (key) => localeDicts.get(ns)?.zh?.[key] ?? key,
     },

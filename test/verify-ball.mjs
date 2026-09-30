@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Verification harness for packages/dsh-client-ui-ball.
  * Loads the hand-written browser half inside jsdom against a mocked Cordis
  * client context, and asserts the registration protocol, the ctx.ball service
@@ -181,14 +181,42 @@ const localeDicts = []
 const slotRegistrations = []
 const cordisListeners = []
 const rowToggles = []
+/** Services resolved through `ctx.inject` so far; property reads depend on it. */
+const injected = new Set()
+// Cordis exposes an injected service both by name and as a context property.
+// `remote.pluginManager` is deliberately a getter that throws unless the service
+// is resolved through injection — that is how a plugin that read it directly
+// shipped a panel that opened empty.
+const pluginManager = {
+  setPluginEnabled: async (id, on) => { rowToggles.push([id, on]); return { ok: true } },
+}
+const remoteService = {
+  $on: () => () => {},
+  get pluginManager() {
+    if (!injected.has('remote.pluginManager')) throw new Error('cannot get property "remote.pluginManager" without inject')
+    return pluginManager
+  },
+}
+const uiSessionService = {
+  get sessionStatus() {
+    if (!injected.has('uiSession')) throw new Error('cannot get property "uiSession" without inject')
+    return sessionStatus
+  },
+}
 const ctx = {
   get: (name) => {
     if (name === 'settingsScope') return settingsScope
-    if (name === 'uiSession') return { sessionStatus }
-    if (name === 'remote') return { pluginManager: { setPluginEnabled: async (id, on) => { rowToggles.push([id, on]); return { ok: true } } }, $on: () => () => {} }
+    if (name === 'uiSession') return uiSessionService
+    if (name === 'remote') return remoteService
+    if (name === 'remote.pluginManager') return pluginManager
+    if (name === 'slots') return ctx.slots
+    if (name === 'locale') return ctx.locale
     return undefined
   },
   provide: (name, value) => { provided.set(name, value) },
+  // The injected context exposes the service as a property as well as by name.
+  remote: remoteService,
+  uiSession: uiSessionService,
   effect(execute, label) {
     const dispose = execute()
     cleanups.push({ label, dispose })
@@ -196,15 +224,19 @@ const ctx = {
   },
   inject(services, callback) {
     const list = Array.isArray(services) ? services : [services]
-    // The ball requests `ball` when another plugin might provide the service;
-    // here it hosts itself, so the callback is simply not run.
-    if (list.includes('ball')) return () => {}
+    // Cordis runs the callback only once every named service exists, and the
+    // context it hands over is the one where the property is readable.
+    if (list.some(name => ctx.get(name) === undefined)) return () => {}
+    for (const name of list) injected.add(name)
     callback(ctx)
-    return () => {}
+    return () => { for (const name of list) injected.delete(name) }
   },
   // Base Cordis Context members a client plugin may always use.
   on(event, listener) { cordisListeners.push({ event, listener }); return () => {} },
   locale: {
+    // The real locale service is a snapshot service: the active language is
+    // read from it, not from a dictionary lookup.
+    getSnapshot: () => ({ locale: 'zh' }),
     register: (ns, dicts) => { localeDicts.push({ ns, dicts }); return () => {} },
     bind: (ns) => (key) => (localeDicts.find(d => d.ns === ns)?.dicts.zh ?? {})[key] ?? key,
   },
@@ -217,6 +249,8 @@ const ctx = {
 let threw = null
 try { plugin.apply(ctx) } catch (error) { threw = error }
 check('apply() does not throw', threw === null, threw?.stack ?? '')
+// Report immediately: everything below assumes apply completed.
+if (threw !== null) { console.log('APPLY THREW:\n' + threw.stack); process.exit(1) }
 
 const doc = window.document
 const host = doc.querySelector('body > .dshb-host')
