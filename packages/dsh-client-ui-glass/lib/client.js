@@ -718,10 +718,30 @@ html[data-dshw-clear] .dshw-backdrop {
         }).catch((error) => { console.error(`[${PLUGIN_ID}] could not read the picked image`, error) })
       })
 
+      // The skin's own health, shown in the panel. Whether the backdrop layer is
+      // still in the document, whether the flag its visibility keys on survived,
+      // and whether the namespace accepts writes are all invisible from the
+      // outside — and every one of them has silently disabled the skin at some
+      // point during development.
+      const health = document.createElement('p')
+      health.className = 'note'
+      shadow.append(health)
+      const renderHealth = () => {
+        const layer = document.querySelector('.dshw-backdrop')
+        const values = settings.get()
+        health.textContent = [
+          `layer ${layer === null ? 'missing' : 'ok'}`,
+          `flag ${document.documentElement.hasAttribute('data-dshw-enabled') ? 'ok' : 'missing'}`,
+          `on ${values.enabled === true ? 'yes' : 'no'}`,
+          `art ${safeUrl((values.wallpaper ?? '').trim()).length}`,
+        ].join(' · ')
+      }
+
       // Exposed so a caller can force a repaint after an out-of-band change.
       container.append(root)
-      const unsubscribe = settings.subscribe(sync)
+      const unsubscribe = settings.subscribe(() => { sync(); renderHealth() })
       sync()
+      renderHealth()
 
       return () => {
         unsubscribe()

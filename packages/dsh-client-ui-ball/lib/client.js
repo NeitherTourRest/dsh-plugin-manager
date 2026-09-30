@@ -1329,10 +1329,18 @@ window.__ModuleLoader__.load({
       const listeners = new Set()
       const service = ctx.get('settingsScope')
       const scope = service === undefined ? null : service.bind({ namespace: declaration.namespace })
+      /** Last observed namespace state, reported in the panel so a dead form says why. */
+      let status = scope === null ? 'no settings service' : 'unknown'
+      let writable = false
+      let lastError = null
+
+      const notify = () => { for (const listener of [...listeners]) listener() }
 
       const read = () => {
         if (scope === null) return { ...defaults }
         const snapshot = scope.getSnapshot()
+        status = String(snapshot.status)
+        writable = snapshot.writable === true
         const section = snapshot.status === 'ready' ? snapshot.value : undefined
         if (typeof section !== 'object' || section === null) return { ...defaults }
         const values = { ...defaults }
@@ -1344,23 +1352,40 @@ window.__ModuleLoader__.load({
       }
 
       if (scope !== null) {
-        ctx.effect(() => scope.subscribe(() => { for (const listener of [...listeners]) listener() }),
-          `ui-ball: ${declaration.namespace} settings`)
+        ctx.effect(() => scope.subscribe(() => { notify() }), `ui-ball: ${declaration.namespace} settings`)
       }
 
       return {
         read,
-        /** @returns {boolean} whether the namespace accepts writes at all. */
-        writable: () => scope !== null && scope.getSnapshot().writable === true,
+        /** @returns {{ status: string, writable: boolean, error: string | null, scope: boolean }} what the panel needs to explain itself. */
+        health: () => ({ status, writable, error: lastError, scope: scope !== null }),
         subscribe(listener) {
           listeners.add(listener)
           return () => { listeners.delete(listener) }
         },
         write(key, value) {
-          if (scope === null) return
-          void scope.set(key, value).catch((error) => {
-            console.error(`[${PLUGIN_ID}] could not write ${declaration.namespace}.${key}`, error)
-          })
+          if (scope === null) {
+            lastError = `no settings service for "${declaration.namespace}"`
+            notify()
+            return
+          }
+          // A rejected promise and a synchronous throw are both possible here,
+          // and both were invisible: the panel simply did nothing.
+          try {
+            const result = scope.set(key, value)
+            if (result !== null && typeof result === 'object' && typeof result.then === 'function') {
+              result.then(
+                () => { lastError = null; notify() },
+                (error) => { lastError = `${key}: ${String(error)}`; notify() },
+              )
+            } else {
+              lastError = null
+              notify()
+            }
+          } catch (error) {
+            lastError = `${key}: ${String(error)}`
+            notify()
+          }
         },
         reset() {
           if (scope === null) return
@@ -1478,6 +1503,23 @@ window.__ModuleLoader__.load({
       reset.append(resetButton)
       container.append(reset)
 
+      // A form that cannot reach its namespace looks identical to one that can,
+      // and says nothing when a write fails. This is the only place a user can
+      // see the difference, so it states the namespace's own health.
+      const health = document.createElement('p')
+      health.className = 'notice'
+      container.append(health)
+      const renderHealth = () => {
+        const state = typeof settings.health === 'function' ? settings.health() : undefined
+        if (state === undefined) { health.hidden = true; return }
+        const healthy = state.error === null && state.status === 'ready' && state.writable
+        health.hidden = healthy
+        if (healthy) return
+        health.textContent = state.error !== null
+          ? `⚠ ${state.error}`
+          : `settings ${state.scope ? state.status : 'unavailable'}${state.writable ? '' : ' · read-only'}`
+      }
+
       /** Refresh one control's readout from the control itself, not from storage. */
       const show = (field, control) => {
         const entry = outputs.get(field.key)
@@ -1517,6 +1559,7 @@ window.__ModuleLoader__.load({
           else if (entry.field.kind === 'toggle') entry.output.textContent = value === true ? '✓' : ''
           else entry.output.textContent = ''
         }
+        renderHealth()
       }
 
       const unsubscribe = settings.subscribe(sync)
