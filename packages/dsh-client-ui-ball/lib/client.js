@@ -953,6 +953,10 @@ window.__ModuleLoader__.load({
       const managementBar = (model) => {
         const descriptor = model.descriptor
         if (descriptor === undefined || typeof descriptor.entryId !== 'string') return null
+        // Never offer this for the ball itself. The switch sits inside the panel
+        // of the plugin it disables, so pressing it removes the button, the
+        // panel, the ball, and every route back to the switch.
+        if (model.id === ROW_ID || descriptor.package === PLUGIN_ID) return null
         if (manager() === undefined) return null
         const bar = document.createElement('div')
         bar.className = 'actions'
@@ -1017,8 +1021,13 @@ window.__ModuleLoader__.load({
             // has no namespace to write, and the bridge is what actually draws
             // the ball — routing its panel through the namespace left the form
             // writing somewhere the ball never read.
-            const binding = model.id === PLUGIN_ID ? ownBinding() : (bindings.get(id) ?? bindModuleSettings(ctx, declaration))
-            if (model.id !== PLUGIN_ID) bindings.set(id, binding)
+            // ROW_ID, not PLUGIN_ID: the module directory carries the id this
+            // package declares in `dsh.ball`, which is `ui-ball`, while PLUGIN_ID
+            // is the package name. Comparing against the package name never
+            // matched, so this branch never ran.
+            const own = model.id === ROW_ID
+            const binding = own ? ownBinding() : (bindings.get(id) ?? bindModuleSettings(ctx, declaration))
+            if (!own) bindings.set(id, binding)
             disposeActive = createForm(body, { fields: declaration.fields, settings: binding, localize })
             drawn = true
           }

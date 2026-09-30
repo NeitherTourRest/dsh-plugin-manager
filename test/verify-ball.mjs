@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Verification harness for packages/dsh-client-ui-ball.
  * Loads the hand-written browser half inside jsdom against a mocked Cordis
  * client context, and asserts the registration protocol, the ctx.ball service
@@ -66,7 +66,20 @@ window.Image = ImageStub
 const directory = {
   protocol: 1,
   modules: [
-    { id: 'ui-ball', package: 'dsh-client-ui-ball', title: { zh: '悬浮球外观', en: 'Ball appearance' }, icon: '🐳', order: 0, rowId: 'ui-ball', entryId: 'include:ui-ball', enabled: true, active: true },
+    {
+      id: 'ui-ball', package: 'dsh-client-ui-ball', title: { zh: '悬浮球外观', en: 'Ball appearance' },
+      icon: '🐳', order: 0, rowId: 'ui-ball', entryId: 'include:ui-ball', enabled: true, active: true,
+      settings: {
+        namespace: 'ui-ball',
+        fields: [
+          { key: 'image', kind: 'image', label: { zh: '形象', en: 'Artwork' } },
+          { key: 'size', kind: 'range', min: 28, max: 96, step: 1, unit: 'px', label: { zh: '大小', en: 'Size' } },
+          { key: 'opacity', kind: 'range', min: 20, max: 100, step: 1, unit: '%', label: { zh: '透明度', en: 'Opacity' } },
+          { key: 'motion', kind: 'select', label: { zh: '动效', en: 'Motion' }, options: [{ value: 'breathe', label: { zh: '呼吸', en: 'Breathe' } }] },
+          { key: 'surfaceWidth', kind: 'range', min: 240, max: 480, step: 1, unit: 'px', label: { zh: '面板宽度', en: 'Panel width' } },
+        ],
+      },
+    },
     {
       id: 'ui-glass', package: 'dsh-client-ui-glass', title: { zh: '磨砂外观', en: 'Glass appearance' },
       icon: '◐', order: 10, rowId: 'ui-glass', entryId: 'include:ui-glass', enabled: false, active: false,
@@ -500,6 +513,31 @@ check('the enable action reaches the profile plugin manager',
   rowToggles.length === 1 && rowToggles[0][0] === 'include:ui-glass' && rowToggles[0][1] === true,
   JSON.stringify(rowToggles))
 check('the directory is refetched after a management action', directoryRequests === 2, String(directoryRequests))
+
+// The ball's own module. Two things must hold: its panel edits the ball rather
+// than a namespace, and it is never offered the switch that disables it.
+// The live panel registered earlier has to go first — a live panel wins over the
+// generated one, which is exactly what it is for.
+disposeLiveBall()
+ball.open()
+const ownRow = menuRows().find(row => row.dataset.entry === 'ui-ball')
+ownRow.dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+const ownButtons = [...panelBody.querySelectorAll('button')].map(button => button.textContent)
+check('the ball is never offered its own disable switch',
+  !ownButtons.includes('停用这个插件'), ownButtons.join(' | '))
+
+// This composition has no settings service at all, which is the state that made
+// the namespace path a dead end. The panel must work anyway.
+const ownFields = [...panelBody.querySelectorAll('[data-field]')]
+check('the ball renders its own declared fields', ownFields.map(f => f.dataset.field).join() === 'image,size,opacity,motion,surfaceWidth',
+  `${ownFields.map(f => f.dataset.field).join()} || body: ${panelBody.textContent.slice(0, 160)}`)
+const ownSize = ownFields.find(field => field.dataset.field === 'size')
+ownSize?.dispatchEvent(new window.Event('input', { bubbles: true }))
+if (ownSize !== undefined) ownSize.value = '88'
+ownSize?.dispatchEvent(new window.Event('change', { bubbles: true }))
+check('editing the ball through its own panel resizes it',
+  host.style.getPropertyValue('--dshb-size') === '88px', host.style.getPropertyValue('--dshb-size'))
+ball.close()
 
 ball.close()
 
