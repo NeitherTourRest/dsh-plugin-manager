@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Verification harness for packages/dsh-client-ui-ball.
  * Loads the hand-written browser half inside jsdom against a mocked Cordis
  * client context, and asserts the registration protocol, the ctx.ball service
@@ -260,8 +260,9 @@ try { ball.register({ id: 'x' }) } catch (error) { badEntry = error }
 // realm's TypeError; the name is the portable assertion.
 check('register rejects an entry without render()', badEntry?.name === 'TypeError', String(badEntry))
 let duplicate = null
-const firstDispose = ball.register({ id: 'a', label: '甲', icon: '🅰', order: 1, render: () => {} })
-try { ball.register({ id: 'a', render: () => {} }) } catch (error) { duplicate = error }
+const draw = (container) => { container.append(window.document.createElement('i')) }
+const firstDispose = ball.register({ id: 'a', label: '甲', icon: '🅰', order: 1, render: draw })
+try { ball.register({ id: 'a', render: draw }) } catch (error) { duplicate = error }
 check('register rejects a duplicate id', duplicate?.name === 'Error', String(duplicate))
 check('entries() lists the registration', ball.entries().map(e => e.id).join() === 'a', JSON.stringify(ball.entries()))
 
@@ -306,7 +307,7 @@ check('the registry empties', ball.entries().length === 0)
 
 // --- appearance settings ----------------------------------------------------
 const ballElement = shadow.querySelector('.ball')
-check('the ball size drives the size variable', host.style.getPropertyValue('--dshb-size') === '52px', host.style.getPropertyValue('--dshb-size'))
+check('the ball size drives the size variable', host.style.getPropertyValue('--dshb-size') === '72px', host.style.getPropertyValue('--dshb-size'))
 check('the motion setting drives the host attribute', host.dataset.motion === 'breathe', host.dataset.motion)
 
 // A Host snapshot whose user layer overrides a field replaces the local copy.
@@ -381,7 +382,7 @@ check('the settings scope was bound for the declared namespace', boundNamespace 
 
 // A module that both declares itself and registers live must appear once, with
 // the live panel winning presentation and no "not loaded" marker.
-const disposeLiveBall = ball.register({ id: 'ui-ball', label: '球', icon: '◉', order: 0, render: () => {} })
+const disposeLiveBall = ball.register({ id: 'ui-ball', label: '球', icon: '◉', order: 0, render: draw })
 
 ball.open()
 const rows = [...menu.children]
@@ -434,7 +435,7 @@ ball.close()
 // declared names the same module. This is the shape the shipped glass plugin
 // had, and the menu listed it twice because of it.
 const disposeGlassByName = ball.register({
-  id: 'dsh-client-ui-glass', label: '磨砂外观', icon: '◐', order: 10, render: () => {},
+  id: 'dsh-client-ui-glass', label: '磨砂外观', icon: '◐', order: 10, render: draw,
 })
 ball.open()
 const byName = [...menu.children]

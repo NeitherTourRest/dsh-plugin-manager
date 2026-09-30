@@ -168,7 +168,10 @@ window.__ModuleLoader__.load({
     /** Defaults mirroring the Host schema; the ball renders from these before the document loads. */
     const DEFAULTS = Object.freeze({
       image: '',
-      size: 52,
+      // The artwork is the floating element, not a picture inside a disc, so it
+      // has to carry the whole presence on screen: a disc reads at 52px, a
+      // free-standing mascot does not.
+      size: 72,
       opacity: 92,
       motion: 'breathe',
       surfaceWidth: 300,
@@ -932,9 +935,18 @@ window.__ModuleLoader__.load({
 
         try {
           if (model.live !== undefined && typeof model.live.render === 'function') {
+            // childNodes, not childElementCount: a panel may legitimately draw
+            // only text, and counting elements would call that an empty panel
+            // and tear it down.
+            const before = body.childNodes.length
             const dispose = model.live.render(body, { close })
             disposeActive = typeof dispose === 'function' ? dispose : null
-            return
+            // A panel that renders nothing leaves an empty box with no way to
+            // tell why. The declaration is still on hand, so the generated form
+            // is shown instead of an empty surface.
+            if (body.childNodes.length > before) return
+            if (disposeActive !== null) { disposeActive(); disposeActive = null }
+            body.textContent = ''
           }
           // No live panel, but the declaration carries a settings schema: the
           // ball renders it. This is the whole point of the protocol — a plugin
