@@ -117,7 +117,7 @@ load(GLASS, 'dsh-client-ui-glass')
 
 // ── the contract ────────────────────────────────────────────────────────────
 const entries = ball.entries()
-check('the glass panel appears in the ball registry', entries.map(e => e.id).join() === 'dsh-client-ui-glass',
+check('the glass panel appears in the ball registry', entries.map(e => e.id).join() === 'ui-glass',
   JSON.stringify(entries))
 check('the ball resolves the glass label through the glass dictionary',
   entries[0]?.label === '磨砂外观', String(entries[0]?.label))

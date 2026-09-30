@@ -213,7 +213,10 @@ const report = (label, checks) => {
   // ball hosting
   check('registers exactly one panel with the ball', o.ballEntries.length === 1, String(o.ballEntries.length))
   const entry = o.ballEntries[0]
-  check('the ball entry is keyed by the package id', entry?.id === 'dsh-client-ui-glass', String(entry?.id))
+  // Must equal the `dsh.ball.id` this package declares. Registering under the
+  // package name instead does not merge with the directory entry, and the ball
+  // lists this plugin twice: once from the directory, once from this panel.
+  check('the ball entry is keyed by the declared module id', entry?.id === 'ui-glass', String(entry?.id))
   check('the ball entry exposes a renderer', typeof entry?.render === 'function')
   check('the ball entry resolves its label from the dictionary', entry.label() === '磨砂外观', String(entry.label()))
   check('no fallback button is mounted while the ball hosts the panel',

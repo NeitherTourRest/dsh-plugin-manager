@@ -430,6 +430,20 @@ check('the directory is refetched after a management action', directoryRequests 
 
 ball.close()
 
+// A plugin that registers under its package name rather than the id it
+// declared names the same module. This is the shape the shipped glass plugin
+// had, and the menu listed it twice because of it.
+const disposeGlassByName = ball.register({
+  id: 'dsh-client-ui-glass', label: '磨砂外观', icon: '◐', order: 10, render: () => {},
+})
+ball.open()
+const byName = [...menu.children]
+check('a panel registered under the package name merges into its declared module',
+  byName.length === 3 && byName.every(row => row.dataset.entry !== 'dsh-client-ui-glass'),
+  byName.map(row => row.dataset.entry).join())
+ball.close()
+disposeGlassByName()
+
 // --- mascot packs and the derived frame -------------------------------------
 check('the pack index is fetched once at mount', packRequests === 1, String(packRequests))
 check('an idle ball reports the idle frame', host.dataset.state === 'idle', String(host.dataset.state))
@@ -465,8 +479,12 @@ setSessionStatuses([])
 check('stopping again latches the finished frame once more', host.dataset.state === 'done', String(host.dataset.state))
 
 adopt('image', '')
-check('clearing the artwork returns to the shipped mascot',
-  shadow.querySelector('.art img')?.getAttribute('src') === '/ui-ball/mascot',
+check('a Host default does not erase a local choice',
+  shadow.querySelector('.art img')?.getAttribute('src') === '/ui-ball/pack/fixture/idle',
+  String(shadow.querySelector('.art img')?.getAttribute('src')))
+adopt('image', 'https://example.test/chosen.png')
+check('a Host value that carries intent is adopted',
+  shadow.querySelector('.art img')?.getAttribute('src') === 'https://example.test/chosen.png',
   String(shadow.querySelector('.art img')?.getAttribute('src')))
 
 // --- teardown ---------------------------------------------------------------

@@ -452,11 +452,19 @@ html[data-dshw-clear] .dshw-backdrop {
           const value = section[key]
           if (typeof value !== typeof DEFAULTS[key]) continue
           if (key === 'fit' && !FITS.includes(value)) continue
-          if (key in user) {
-            if (next[key] !== value) { next[key] = value; changed = true }
-          } else if (next[key] !== DEFAULTS[key] && !migrated.has(key)) {
+          const local = next[key]
+          // A Host value equal to the schema default carries no user intent:
+          // either nobody set the field, or the document never learned our
+          // value. The local copy holds only a user choice or the default, so
+          // taking the default here can only destroy a choice — a picked
+          // wallpaper, most expensively. Ours goes up instead, which is also
+          // what makes it durable.
+          const carriesIntent = value !== DEFAULTS[key] || local === DEFAULTS[key]
+          if (carriesIntent && key in user) {
+            if (local !== value) { next[key] = value; changed = true }
+          } else if (local !== DEFAULTS[key] && !migrated.has(key)) {
             migrated.add(key)
-            void scope.set(key, next[key]).catch((error) => {
+            void scope.set(key, local).catch((error) => {
               console.error(`[${PLUGIN_ID}] could not migrate local setting "${key}"`, error)
             })
           }
@@ -825,7 +833,11 @@ html[data-dshw-clear] .dshw-backdrop {
         teardownStandalone?.()
         teardownStandalone = null
         ballCtx.effect(() => ballHost.register({
-          id: PLUGIN_ID,
+          // The ball module id, which is also this package's `dsh.ball.id`.
+          // Registering under the package name instead would not match the
+          // declaration, and the ball would list this plugin twice: once from
+          // the directory, once from this live registration.
+          id: ROW_ID,
           icon: '◐',
           order: BALL_ORDER,
           label: () => translate('panel'),

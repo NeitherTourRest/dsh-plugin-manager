@@ -211,25 +211,28 @@ window.__ModuleLoader__.load({
   height: var(--dshb-size, 52px);
   padding: 0;
   border: 0;
-  border-radius: 50%;
-  background: radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.94), rgba(226, 236, 255, 0.78) 58%, rgba(198, 214, 246, 0.7));
-  box-shadow: 0 6px 20px rgba(15, 25, 60, 0.34), inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+  /* The artwork is the floating element, not a picture inside a disc: no
+     background, no ring. A drop-shadow rather than box-shadow so the shadow
+     follows the mascot's own outline and works over any app surface. */
+  background: none;
+  box-shadow: none;
+  filter: drop-shadow(0 5px 11px rgba(10, 18, 45, 0.45));
   opacity: var(--dshb-opacity, 0.92);
   cursor: grab;
   touch-action: none;
   user-select: none;
   -webkit-user-drag: none;
-  transition: box-shadow 0.18s ease;
+  transition: filter 0.18s ease, transform 0.18s ease;
 }
-.ball:hover { box-shadow: 0 9px 26px rgba(15, 25, 60, 0.42), inset 0 0 0 1px rgba(255, 255, 255, 0.7); }
+.ball:hover { filter: drop-shadow(0 8px 17px rgba(10, 18, 45, 0.52)); transform: translateY(-1px); }
 .ball:active { cursor: grabbing; }
-.ball:focus-visible { outline: 2px solid #6ea8fe; outline-offset: 2px; }
+.ball:focus-visible { outline: 2px solid #6ea8fe; outline-offset: 2px; border-radius: 10px; }
 
 .art {
   display: grid;
   place-items: center;
-  width: 86%;
-  height: 86%;
+  width: 100%;
+  height: 100%;
   transform-origin: 50% 62%;
   /* The artwork is decoration. Every pointer gesture has to belong to the
      button, and a native image drag must never start: without this, dragging
@@ -498,11 +501,18 @@ window.__ModuleLoader__.load({
           const value = section[key]
           if (typeof value !== typeof DEFAULTS[key]) continue
           if (key === 'motion' && !MOTIONS.includes(value)) continue
-          if (key in user) {
-            if (next[key] !== value) { next[key] = value; changed = true }
-          } else if (next[key] !== DEFAULTS[key] && !migrated.has(key)) {
+          const local = next[key]
+          // A Host value equal to the schema default carries no user intent:
+          // either nobody set the field, or the document never learned our
+          // value. The local copy holds only a user choice or the default, so
+          // taking the default here can only destroy a choice — ours goes up
+          // instead, which is also what makes it durable.
+          const carriesIntent = value !== DEFAULTS[key] || local === DEFAULTS[key]
+          if (carriesIntent && key in user) {
+            if (local !== value) { next[key] = value; changed = true }
+          } else if (local !== DEFAULTS[key] && !migrated.has(key)) {
             migrated.add(key)
-            void scope.set(key, next[key]).catch((error) => {
+            void scope.set(key, local).catch((error) => {
               console.error(`[${PLUGIN_ID}] could not migrate local setting "${key}"`, error)
             })
           }
@@ -712,9 +722,10 @@ window.__ModuleLoader__.load({
        */
       const models = () => {
         const merged = new Map()
+        const byPackage = new Map()
         for (const module of directory.modules) {
           if (typeof module?.id !== 'string') continue
-          merged.set(module.id, {
+          const model = {
             id: module.id,
             title: localize(module.title, module.id),
             icon: typeof module.icon === 'string' ? module.icon : '',
@@ -723,10 +734,16 @@ window.__ModuleLoader__.load({
             live: undefined,
             problem: typeof module.problem === 'string' ? module.problem : undefined,
             seq: merged.size,
-          })
+          }
+          merged.set(module.id, model)
+          if (typeof module.package === 'string') byPackage.set(module.package, model)
         }
         for (const entry of entries.values()) {
-          const known = merged.get(entry.id)
+          // Registering under the package name rather than the declared id is
+          // an easy mistake and names the same module, so both are matched.
+          // Without this the menu lists the plugin twice: once from the
+          // directory, once from this registration.
+          const known = merged.get(entry.id) ?? byPackage.get(entry.id)
           if (known === undefined) {
             merged.set(entry.id, {
               id: entry.id,
@@ -965,10 +982,13 @@ window.__ModuleLoader__.load({
           item.append(icon, label)
           // A declared module the composition is not running is still listed;
           // saying so is the difference between a settings list and a manager.
+          // The Loader's own view of the row is what decides this — not whether
+          // a panel registered, because a module that ships no panel is normal:
+          // the generated form is its panel.
           const state = model.problem !== undefined ? 'problem'
-            : model.descriptor !== undefined && model.descriptor.enabled === false ? 'off'
-              : model.descriptor !== undefined && model.descriptor.active === false ? 'idle'
-                : model.live === undefined && model.descriptor !== undefined ? 'idle'
+            : model.descriptor === undefined ? 'on'
+              : model.descriptor.enabled === false ? 'off'
+                : model.descriptor.active === false ? 'idle'
                   : 'on'
           if (state !== 'on') {
             const chip = document.createElement('span')
