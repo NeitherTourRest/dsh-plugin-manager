@@ -450,6 +450,21 @@ check('a declared range keeps its declared bounds',
   fields[0]?.type === 'range' && fields[0]?.min === '0' && fields[0]?.max === '100',
   `${String(fields[0]?.type)} ${String(fields[0]?.min)}..${String(fields[0]?.max)}`)
 check('a declared toggle renders as a checkbox', fields[1]?.type === 'checkbox', String(fields[1]?.type))
+
+// Dragging must survive the store echo. The old wiring re-read the stored value
+// on every `input`, so the control snapped back under the pointer and the
+// release wrote the value it had just been reset to — nothing could be changed.
+const range = fields[0]
+setCalls.length = 0
+range.value = '42'
+range.dispatchEvent(new window.Event('input', { bubbles: true }))
+check('dragging a range keeps the dragged value', range.value === '42', range.value)
+check('the drag readout follows the pointer',
+  range.parentElement.querySelector('output')?.textContent === '42%',
+  String(range.parentElement.querySelector('output')?.textContent))
+range.dispatchEvent(new window.Event('change', { bubbles: true }))
+check('releasing a range writes the dragged value',
+  setCalls.length === 1 && setCalls[0][0] === 'opacity' && setCalls[0][1] === 42, JSON.stringify(setCalls))
 check('the form offers a reset', [...panelBody.querySelectorAll('button')].some(b => b.textContent === '恢复默认'))
 check('a disabled module is offered an enable action',
   [...panelBody.querySelectorAll('button')].some(b => b.textContent === '启用这个插件'),

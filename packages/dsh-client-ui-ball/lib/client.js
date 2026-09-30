@@ -263,12 +263,12 @@ window.__ModuleLoader__.load({
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: 14px;
-  background: rgba(22, 23, 26, 0.92);
-  -webkit-backdrop-filter: blur(26px) saturate(150%);
-  backdrop-filter: blur(26px) saturate(150%);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.46);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  background: rgba(19, 20, 23, 0.94);
+  -webkit-backdrop-filter: blur(32px) saturate(170%);
+  backdrop-filter: blur(32px) saturate(170%);
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.52), 0 2px 10px rgba(0, 0, 0, 0.3);
 }
 .surface[hidden] { display: none; }
 .surface[data-side='up'][data-align='right'] { bottom: calc(100% + 10px); right: 0; }
@@ -276,8 +276,8 @@ window.__ModuleLoader__.load({
 .surface[data-side='down'][data-align='right'] { top: calc(100% + 10px); right: 0; }
 .surface[data-side='down'][data-align='left'] { top: calc(100% + 10px); left: 0; }
 
-.head { display: flex; align-items: center; gap: 6px; padding: 11px 12px 8px; }
-.head b { flex: 1; font-size: 13px; font-weight: 600; }
+.head { display: flex; align-items: center; gap: 8px; padding: 13px 14px 9px; }
+.head b { flex: 1; font-size: 13.5px; font-weight: 600; letter-spacing: 0.2px; }
 .head button {
   width: 22px; height: 22px; flex: 0 0 auto; padding: 0; border: 0; border-radius: 6px;
   background: transparent; color: #a9adb4; font-size: 15px; line-height: 1; cursor: pointer;
@@ -289,13 +289,17 @@ window.__ModuleLoader__.load({
 .menu { padding: 0 8px 10px; overflow-y: auto; }
 .menu[hidden] { display: none; }
 .entry {
-  display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 9px;
-  border: 0; border-radius: 9px; background: transparent; color: #eceef1;
-  font-size: 12.5px; text-align: left; cursor: pointer;
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 9px;
+  border: 0; border-radius: 11px; background: transparent; color: #eceef1;
+  font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+  transition: background 0.14s ease;
 }
-.entry:hover { background: rgba(255, 255, 255, 0.09); }
+.entry:hover { background: rgba(255, 255, 255, 0.075); }
 .entry:focus-visible { outline: 2px solid #6ea8fe; outline-offset: -2px; }
-.entry__icon { width: 20px; flex: 0 0 auto; text-align: center; font-size: 15px; line-height: 1; }
+.entry__icon {
+  width: 26px; height: 26px; flex: 0 0 auto; display: grid; place-items: center;
+  border-radius: 8px; background: rgba(255, 255, 255, 0.07); font-size: 14px; line-height: 1;
+}
 .entry__label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .entry__state {
   flex: 0 0 auto; padding: 1px 6px; border-radius: 999px; font-size: 10px; line-height: 1.6;
@@ -305,17 +309,39 @@ window.__ModuleLoader__.load({
 .entry__state[data-state='off'] { background: rgba(255, 255, 255, 0.14); color: #d7dade; }
 
 /* Generic settings form, rendered from a module's declared fields. */
-.field { display: grid; grid-template-columns: 76px 1fr 46px; align-items: center; gap: 8px; margin: 7px 0; }
-.field > span { color: #b9bdc4; }
-.field output { text-align: right; color: #8f949c; font-variant-numeric: tabular-nums; }
-.field input[type='range'] { width: 100%; margin: 0; accent-color: #6ea8fe; }
+.field { display: grid; grid-template-columns: 74px 1fr 44px; align-items: center; gap: 10px; margin: 9px 0; }
+.field > span { color: #b9bdc4; font-size: 12.5px; }
+.field output { text-align: right; color: #8f949c; font-size: 12px; font-variant-numeric: tabular-nums; }
 .field select, .field input[type='text'] {
-  width: 100%; padding: 4px 6px; border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 7px;
-  background: rgba(255, 255, 255, 0.06); color: #eceef1; font-size: 12px;
+  width: 100%; padding: 5px 8px; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 9px;
+  background: rgba(255, 255, 255, 0.055); color: #eceef1; font: inherit; font-size: 12.5px;
 }
 .field select:focus-visible, .field input[type='text']:focus-visible { outline: 2px solid #6ea8fe; outline-offset: 1px; }
+.field input[type='checkbox'] { width: 16px; height: 16px; accent-color: #6ea8fe; cursor: pointer; }
 
-.notice { margin: 4px 0 10px; color: #a9adb4; font-size: 12px; line-height: 1.6; }
+/* A bare range input has no track or thumb on Chromium, so both are drawn. */
+.field input[type='range'] {
+  -webkit-appearance: none; appearance: none; width: 100%; height: 16px; margin: 0;
+  background: transparent; cursor: pointer;
+}
+.field input[type='range']::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.15); }
+.field input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: 13px; height: 13px; margin-top: -4.5px;
+  border-radius: 50%; background: #6ea8fe; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+.field input[type='range']:focus-visible { outline: 2px solid #6ea8fe; outline-offset: 3px; border-radius: 3px; }
+
+/* Panel buttons: the reset action and the module's enable/disable switch. */
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 13px 0 2px; }
+.actions button {
+  padding: 6px 12px; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06); color: #e6e8ec; font: inherit; font-size: 12px;
+  cursor: pointer; transition: background 0.14s ease, border-color 0.14s ease;
+}
+.actions button:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.22); }
+.actions button:focus-visible { outline: 2px solid #6ea8fe; outline-offset: 1px; }
+
+.notice { margin: 8px 0; color: #a9adb4; font-size: 12px; line-height: 1.65; }
 
 .body { padding: 0 12px 13px; overflow-y: auto; }
 .body[hidden] { display: none; }
@@ -1399,8 +1425,13 @@ window.__ModuleLoader__.load({
 
         // `input` previews locally; `change` fires once the gesture ends, which
         // is the only point that should reach the settings wire.
-        control.addEventListener('input', () => { apply(field, control, false) })
-        control.addEventListener('change', () => { apply(field, control, true) })
+        // `input` fires while the gesture is still moving. It must only refresh
+        // this control's own readout: re-reading the stored value here snaps the
+        // control back under the pointer, so nothing can be changed at all.
+        // `change` fires once the gesture ends, and that is what reaches the
+        // settings wire.
+        control.addEventListener('input', () => { show(field, control) })
+        control.addEventListener('change', () => { commit(field, control) })
 
         controls.set(field.key, control)
         container.append(row)
@@ -1443,19 +1474,36 @@ window.__ModuleLoader__.load({
       reset.append(resetButton)
       container.append(reset)
 
-      /** @param {object} field - the field, @param {HTMLElement} control - its control, @param {boolean} durable - whether to write. */
-      const apply = (field, control, durable) => {
-        if (!durable) { sync(); return }
+      /** Refresh one control's readout from the control itself, not from storage. */
+      const show = (field, control) => {
+        const entry = outputs.get(field.key)
+        if (entry === undefined) return
+        const value = read(control, field)
+        if (field.kind === 'range') entry.output.textContent = `${String(value)}${field.unit ?? ''}`
+        else if (field.kind === 'toggle') entry.output.textContent = value === true ? '✓' : ''
+        else entry.output.textContent = ''
+      }
+
+      /** Push one control's value to the namespace. */
+      const commit = (field, control) => {
+        show(field, control)
         settings.write(field.key, read(control, field))
       }
 
-      /** Push the namespace value into every control and readout. */
+      /**
+       * Push the namespace value into every control and readout.
+       *
+       * This runs on a namespace change, which includes this form's own writes
+       * echoing back — so a text box being typed into is left alone, and a
+       * control the pointer is holding is left alone.
+       */
       const sync = () => {
         const values = settings.read()
         for (const [key, control] of controls) {
           const value = values[key]
           if (control.type === 'checkbox') control.checked = value === true
-          else if (control.type === 'range' || control.tagName === 'SELECT') control.value = String(value)
+          else if (control.type === 'range') { if (control.value !== String(value)) control.value = String(value) }
+          else if (control.tagName === 'SELECT') control.value = String(value)
           // A text box keeps whatever is being typed: a shadow-root input
           // reports its host as document.activeElement.
           else if (container.getRootNode().activeElement !== control) control.value = String(value)
