@@ -571,6 +571,7 @@ window.__ModuleLoader__.load({
       // permanently unreachable — which is why nothing this plugin ever set
       // reached the Host document.
       ctx.inject(['settingsScope'], (scopeCtx) => {
+        scopeHealth = 'resolved'
         scope = scopeCtx.settingsScope.bind({ namespace: NAMESPACE })
         const sync = () => {
           const snapshot = scope.getSnapshot()
@@ -727,6 +728,8 @@ window.__ModuleLoader__.load({
        */
       let managerApi
       let sessionStatus
+      /** 'resolved' once the settings scope arrives; null while it has not. */
+      let scopeHealth = null
 
       /**
        * Resolve a localized pair against the active language, preferring the
@@ -1143,16 +1146,19 @@ window.__ModuleLoader__.load({
         }
 
         lines.push('', 'settings namespaces:')
-        const service = ctx.get('settingsScope')
-        for (const namespace of ['ui-ball', 'ui-glass']) {
-          if (service === undefined) { lines.push(`  ${namespace}: no settings service`); continue }
+        // The scope this plugin actually holds, taken from its own injection.
+        // `ctx.get('settingsScope')` on this outer context reports what this
+        // plugin may reach, not what the composition provides — ui-settings-plugins
+        // injects the service and is demonstrably active, so reading undefined
+        // from here says nothing about whether the service exists.
+        put('scope injection', scopeHealth === null ? 'not resolved' : 'resolved')
+        for (const [namespace, binding] of bindings) {
+          const health = binding.health()
+          lines.push(`  ${namespace} scope=${String(health.scope)} status=${health.status} writable=${String(health.writable)} error=${String(health.error)}`)
           try {
-            const snapshot = service.bind({ namespace }).getSnapshot()
-            lines.push(`  ${namespace} status=${String(snapshot.status)} writable=${String(snapshot.writable)} revision=${String(snapshot.revision)}`)
-            lines.push(`    user=${JSON.stringify(snapshot.user ?? null)?.slice(0, 220) ?? 'undefined'}`)
-            lines.push(`    value=${JSON.stringify(snapshot.value ?? null)?.slice(0, 280) ?? 'undefined'}`)
+            lines.push(`    values=${JSON.stringify(binding.read()).slice(0, 280)}`)
           } catch (error) {
-            lines.push(`  ${namespace}: THROWS ${String(error)}`)
+            lines.push(`    read THROWS ${String(error)}`)
           }
         }
 
