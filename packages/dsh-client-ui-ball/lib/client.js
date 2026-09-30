@@ -923,9 +923,6 @@ window.__ModuleLoader__.load({
         body.hidden = false
         back.hidden = sorted().length < 2
 
-        const bar = managementBar(model)
-        if (bar !== null) body.append(bar)
-
         const note = (text) => {
           const message = document.createElement('p')
           message.className = 'notice'
@@ -933,7 +930,14 @@ window.__ModuleLoader__.load({
           body.append(message)
         }
 
+        // Everything that can fail belongs inside one try. A throw above the old
+        // try left the title painted and the body blank, with nothing on screen
+        // saying why — a panel nobody can act on, and nothing to report.
         try {
+          const bar = managementBar(model)
+          if (bar !== null) body.append(bar)
+
+          let drawn = false
           if (model.live !== undefined && typeof model.live.render === 'function') {
             // childNodes, not childElementCount: a panel may legitimately draw
             // only text, and counting elements would call that an empty panel
@@ -941,39 +945,35 @@ window.__ModuleLoader__.load({
             const before = body.childNodes.length
             const dispose = model.live.render(body, { close })
             disposeActive = typeof dispose === 'function' ? dispose : null
-            // A panel that renders nothing leaves an empty box with no way to
-            // tell why. The declaration is still on hand, so the generated form
-            // is shown instead of an empty surface.
-            if (body.childNodes.length > before) return
-            if (disposeActive !== null) { disposeActive(); disposeActive = null }
-            body.textContent = ''
+            drawn = body.childNodes.length > before
+            if (!drawn) {
+              if (disposeActive !== null) { disposeActive(); disposeActive = null }
+              body.textContent = ''
+            }
           }
-          // No live panel, but the declaration carries a settings schema: the
-          // ball renders it. This is the whole point of the protocol — a plugin
-          // that ships no form code still gets a working one.
+          // A live panel that drew nothing falls through to the declaration.
+          // Rendering it is the point of the protocol: a plugin that ships no
+          // form code still gets a working one.
           const declaration = model.descriptor?.settings
-          if (declaration !== undefined) {
+          if (!drawn && declaration !== undefined) {
             const binding = bindings.get(id) ?? bindModuleSettings(ctx, declaration)
             bindings.set(id, binding)
-            const dispose = createForm(body, {
-              fields: declaration.fields,
-              settings: binding,
-              localize,
-            })
-            const reset = document.createElement('div')
-            reset.className = 'actions'
-            disposeActive = () => { dispose(); reset.remove() }
-            return
+            disposeActive = createForm(body, { fields: declaration.fields, settings: binding, localize })
+            drawn = true
           }
-          if (model.problem !== undefined) note(model.problem)
-          else if (model.descriptor !== undefined) {
+          if (!drawn && model.problem !== undefined) { note(model.problem); drawn = true }
+          if (!drawn && model.descriptor !== undefined) {
             note(localize({ zh: '这个模块没有声明设置项，也没有提供面板。', en: 'This module declares no settings and provides no panel.' }, 'no panel'))
-          } else {
-            note(translate('empty'))
+            drawn = true
           }
+          if (!drawn) note(translate('empty'))
         } catch (error) {
           console.error(`[${PLUGIN_ID}] panel "${id}" failed to render`, error)
-          body.textContent = String(error)
+          note(`${localize({ zh: '面板渲染失败', en: 'The panel failed to render' }, 'panel failed')}: ${String(error)}`)
+        }
+        // An empty surface is unreportable, so say what was actually resolved.
+        if (body.childNodes.length === 0) {
+          note(`no panel: live=${String(model.live !== undefined)} settings=${String(model.descriptor?.settings !== undefined)} problem=${String(model.problem)}`)
         }
       }
 

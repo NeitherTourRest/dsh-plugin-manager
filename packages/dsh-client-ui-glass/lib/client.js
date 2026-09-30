@@ -806,7 +806,20 @@ html[data-dshw-clear] .dshw-backdrop {
         parent.append(backdrop)
         paint()
         const unsubscribe = settings.subscribe(paint)
+
+        // The shell may replace its own mount point while it boots, which
+        // detaches this layer and silently drops the wallpaper — the skin is
+        // gone on the next start but returns the moment you touch a setting.
+        // Nothing tells a plugin that happened, so the layer puts itself back.
+        const keeper = new MutationObserver(() => {
+          if (backdrop.isConnected) return
+          ;(document.body ?? document.documentElement).append(backdrop)
+          paint()
+        })
+        keeper.observe(document.documentElement, { childList: true, subtree: true })
+
         return () => {
+          keeper.disconnect()
           staticTag.remove()
           variableTag.remove()
           backdrop.remove()
