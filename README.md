@@ -232,8 +232,9 @@ ctx.effect(() => ball.register({
 没有构建步骤——`lib/` 里就是实际执行的代码。改完直接重新安装即可（或从 profile 里的副本改）。
 
 ```sh
-npm install     # 只为测试装 jsdom
-npm test        # 四个 jsdom 验证脚本
+npm install           # 只为测试装 jsdom
+npm test              # 四个 jsdom 验证脚本 + 一次相对链接检查
+npm run check:links   # 只跑链接检查
 ```
 
 | 脚本 | 覆盖 |
@@ -244,6 +245,8 @@ npm test        # 四个 jsdom 验证脚本
 | `test/verify-together.mjs` | 15 项：把两个包加载进同一个文档，用**真实的 `ctx.ball` 服务**驱动玻璃面板——验证跨插件契约本身 |
 
 共 250 项。它们验证**行为与协议**，不验证视觉观感。磨砂强度合不合意得在真机上对着自己的壁纸调。
+
+`npm test` 最后还会查一遍**全仓 Markdown 的相对链接**（[`scripts/check-links.mjs`](scripts/check-links.mjs)）：每条链接按它所在文件的目录解析，锚点剥掉后必须落到磁盘上真实存在的文件。README 里的图片、`docs/` 之间的互链、指向 `scripts/` 和两个包的路径都在内——写错层级或改名后忘了改链接，在这里就会非零退出，而不是在 GitHub 上悄悄变成一行纯文本。
 
 ---
 
