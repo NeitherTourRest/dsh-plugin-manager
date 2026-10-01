@@ -40,7 +40,7 @@ assets/packs/whale-girl/
 
 悬浮球按**会话状态**切帧：有会话在跑 → `working`；在等你审批/回答 → `waiting`；刚跑完 → `done`（保持 6 秒）；其余 → `idle`。
 
-`.gitignore` 忽略 `assets/packs/` 下的一切，所以你放的包同样**不会进入仓库历史**。
+`.gitignore` 只放行本仓库自带的 `whale-girl-*` 这几个包，**你另起的包名同样不会进入仓库历史**。
 
 ## 换成你自己的图
 

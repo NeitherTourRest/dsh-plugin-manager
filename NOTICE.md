@@ -24,9 +24,15 @@ from `LICENSE` so GitHub still detects the MIT license.
   - DeepSeek 元素二创：**ZipZipPipe**（GPT Image 2）
   - 改进版修复：**QYQCAMIAO**
 - **文件来源**：[`fornarwhal/deepseek-whale-girl-icon`](https://github.com/fornarwhal/deepseek-whale-girl-icon)
-  的 `improved-1.png`（984×984 RGBA），2026-09-29 取用。
-- **本仓库所做的修改**：等比缩放到 256×256，未裁剪、未调色、未改动画面内容。
-  CC BY-NC-SA 4.0 要求标注修改，此即该标注。
+  的 `improved-1.png`（984×984 RGBA）与 `whale-girl-transparent.png`（910×941 RGBA），2026-09-29 取用。
+- **本仓库所做的修改**（CC BY-NC-SA 4.0 要求标注修改，此即该标注）：
+  - `assets/mascot.png` —— 由 `improved-1.png` 等比缩放到 256×256，未裁剪、未调色、未改动画面内容。
+  - `assets/packs/whale-girl-original/idle.webp` —— 由 `whale-girl-transparent.png` 等比缩放到 309×320，
+    未裁剪、未调色、未改动画面内容。
+  - `assets/packs/whale-girl-{night,sakura,mint,violet}/idle.webp` —— 由 `improved-1.png` 缩放并**整体旋转色相**
+    得到的配色变体（夜 / 樱 / 薄荷 / 紫），另附明度与饱和度调整。**画面内容、构图、线条均未改动**，
+    仅整体换色，属于演绎作品，因此同样以 CC BY-NC-SA 4.0 分发。
+    生成脚本见 [`scripts/make-mascot-packs.py`](scripts/make-mascot-packs.py)，可复现。
 - 该来源仓库自身声明：「本仓库图片来自网络流传，具体作者未确认；如原作者认为不妥，请联系删除。」
   本仓库沿用同一立场：**若你是权利人并认为此处使用不妥，请开 Issue，我们会立即移除。**
 

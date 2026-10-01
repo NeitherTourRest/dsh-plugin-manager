@@ -13,7 +13,7 @@
  * Run from the repository root:
  *   node test/verify-ball-host.mjs
  */
-import { rmSync, writeFileSync, mkdirSync, readFileSync, existsSync, renameSync } from 'node:fs'
+import { rmSync, writeFileSync, mkdirSync, readFileSync, readdirSync, existsSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import { register } from 'node:module'
 import { pathToFileURL } from 'node:url'
@@ -295,7 +295,10 @@ rows = [row('@fixture/good', 'good'), row('@fixture/bad', 'bad'), row('@fixture/
 {
   const packsDirectory = join(plugin.MASCOT_DIRECTORY, 'packs')
   const packDirectory = join(packsDirectory, 'fixture-pack')
-  const droppings = [packsDirectory]
+  const hadPacksDirectory = existsSync(packsDirectory)
+  // Only what this test creates. Removing the directory itself would take the
+  // packs the repository ships with it.
+  const droppings = [packDirectory]
   const writePack = (manifest, files) => {
     mkdirSync(packDirectory, { recursive: true })
     writeFileSync(join(packDirectory, 'pack.json'), JSON.stringify(manifest))
@@ -310,9 +313,25 @@ rows = [row('@fixture/good', 'good'), row('@fixture/bad', 'bad'), row('@fixture/
   try {
     {
       const { res, json } = await readIndex()
-      check('an absent packs directory is an empty index',
-        res.status === 200 && json.packs.length === 0, JSON.stringify(json))
+      // The shipped packs are the reason this channel exists, so the index is
+      // asserted against them rather than against an empty directory.
+      check('the shipped packs are all indexed',
+        res.status === 200 && json.packs.length === 5, `${String(json.packs.length)}: ${json.packs.map(pack => pack.id).join(', ')}`)
+      check('every shipped pack is well formed',
+        json.packs.every(pack => pack.problem === undefined), JSON.stringify(json.packs.filter(pack => pack.problem !== undefined)))
+      check('every shipped pack declares an idle frame',
+        json.packs.every(pack => typeof pack.states?.idle === 'string'), JSON.stringify(json.packs.map(pack => pack.states)))
+      check('every shipped pack carries its attribution',
+        json.packs.every(pack => pack.license === 'CC BY-NC-SA 4.0' && typeof pack.author === 'string'),
+        JSON.stringify(json.packs.map(pack => pack.license)))
       check('the index publishes the known states', json.states.join() === 'idle,working,waiting,done', json.states.join())
+
+      // And each one actually serves its artwork.
+      const served = response()
+      await servePackAsset(request('GET', '/ui-ball/pack/whale-girl-night/idle'), served)
+      check('a shipped pack serves its artwork',
+        served.status === 200 && served.headers['content-type'] === 'image/webp',
+        `${String(served.status)} ${String(served.headers?.['content-type'])}`)
     }
 
     writePack(
@@ -374,6 +393,11 @@ rows = [row('@fixture/good', 'good'), row('@fixture/bad', 'bad'), row('@fixture/
     }
   } finally {
     for (const path of droppings) rmSync(path, { recursive: true, force: true })
+    // A directory this test created is removed only once it is empty again, so
+    // an unexpected leftover is reported by the next run rather than deleted.
+    if (!hadPacksDirectory && existsSync(packsDirectory) && readdirSync(packsDirectory).length === 0) {
+      rmSync(packsDirectory, { recursive: true, force: true })
+    }
   }
 }
 

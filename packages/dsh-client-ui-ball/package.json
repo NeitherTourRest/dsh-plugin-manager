@@ -15,6 +15,7 @@
     "cordis.patch.yml",
     "assets/README.md",
     "assets/mascot.png",
+    "assets/packs",
     "README.md"
   ],
   "dsh": {
@@ -39,7 +40,7 @@
             "label": { "zh": "形象", "en": "Artwork" },
             "hint": { "zh": "留空时用 assets/mascot.* 或所选形象包；也可填图片 URL 或一个表情符号", "en": "Empty uses assets/mascot.* or the selected pack; a URL or a single emoji also works" }
           },
-          { "key": "size", "kind": "range", "min": 28, "max": 96, "step": 1, "unit": "px", "label": { "zh": "大小", "en": "Size" } },
+          { "key": "size", "kind": "range", "min": 28, "max": 160, "step": 1, "unit": "px", "label": { "zh": "大小", "en": "Size" } },
           { "key": "opacity", "kind": "range", "min": 20, "max": 100, "step": 1, "unit": "%", "label": { "zh": "透明度", "en": "Opacity" } },
           {
             "key": "motion",

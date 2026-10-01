@@ -16,3 +16,8 @@ Thumbs.db
 packages/*/assets/*
 !packages/*/assets/README.md
 !packages/*/assets/mascot.png
+# The packs this repository ships are part of it. A pack you add yourself is
+# not named here, so it stays out of history exactly like a dropped mascot.
+!packages/*/assets/packs/
+!packages/*/assets/packs/whale-girl-*/
+!packages/*/assets/packs/whale-girl-*/**

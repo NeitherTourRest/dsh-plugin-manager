@@ -63,7 +63,7 @@ export const MASCOT_FILES = [
 
 /** Ball sizes accepted by the schema, in px. */
 export const BALL_SIZE_MIN = 28
-export const BALL_SIZE_MAX = 96
+export const BALL_SIZE_MAX = 160
 
 /**
  * Default ball size, in px.
