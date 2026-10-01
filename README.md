@@ -185,6 +185,21 @@ ctx.effect(() => ball.register({
 
 ---
 
+## 文档
+
+| 我想 | 看 |
+|---|---|
+| 装上它 / 让 AI agent 帮我装 | [`docs/install.md`](docs/install.md) |
+| **做一个能被管理器识别的插件** | [`docs/making-a-plugin.md`](docs/making-a-plugin.md) |
+| 往本仓库加一个附赠插件 | [`docs/adding-a-bundled-plugin.md`](docs/adding-a-bundled-plugin.md) |
+| 知道它内部怎么运作 | [`docs/architecture.md`](docs/architecture.md) |
+| 出问题了 | [`docs/troubleshooting.md`](docs/troubleshooting.md) |
+| 查 `dsh.ball` 的规范条文 | [`PROTOCOL.md`](packages/dsh-client-ui-ball/PROTOCOL.md) |
+
+全部文档的索引在 [`docs/`](docs/README.md)。
+
+---
+
 ## 统一设置
 
 两个包都接入 dsh 官方设置体系，而不是自建存储：

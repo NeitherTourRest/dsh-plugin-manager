@@ -165,7 +165,7 @@ ctx.effect(() => ball.register({
 | `whale-girl-violet` | 鲸鱼娘·紫 —— 紫罗兰配色 |
 | `whale-girl-original` | 鲸鱼娘·原图 —— 修复前的原始版本 |
 
-四个配色变体由 [`scripts/make-mascot-packs.py`](../../../scripts/make-mascot-packs.py) 从修复版整体旋转色相生成，
+四个配色变体由 [`scripts/make-mascot-packs.py`](../../scripts/make-mascot-packs.py) 从修复版整体旋转色相生成，
 **画面内容未改动**，属于 CC BY-NC-SA 4.0 的演绎作品——可复现，也可用同一脚本生成你自己的配色。
 
 ### 做一个自己的形象包（含多帧状态）
