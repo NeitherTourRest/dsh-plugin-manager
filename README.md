@@ -35,16 +35,18 @@
 
 ## 仓库里有什么
 
-| 包 | 角色 |
-|---|---|
-| [`dsh-client-ui-ball`](packages/dsh-client-ui-ball/README.md) | **主体——管理器本身**。可拖动、可换形象的悬浮球，扫描 `dsh.ball` 清单、渲染设置表单、代理启用/停用。协议规范在 [`PROTOCOL.md`](packages/dsh-client-ui-ball/PROTOCOL.md) |
-| [`dsh-client-ui-glass`](packages/dsh-client-ui-glass/README.md) | **第一个适配它的插件**：透明磨砂玻璃外观（不透明度 / 磨砂强度 / 背景画面 / 完全透明）。它自己声明 `dsh.ball`，所以面板与配置卡片都是球给的 |
+| 包 | 角色 | 能单独装吗 |
+|---|---|---|
+| [`dsh-client-ui-ball`](packages/dsh-client-ui-ball/README.md) | **主体——管理器本身**。可拖动、可换形象的悬浮球，扫描 `dsh.ball` 清单、渲染设置表单、代理启用/停用。协议规范在 [`PROTOCOL.md`](packages/dsh-client-ui-ball/PROTOCOL.md) | ✅ **可以**，装它一个就够 |
+| [`dsh-client-ui-glass`](packages/dsh-client-ui-glass/README.md) | **第一个适配它的插件**：透明磨砂玻璃外观（不透明度 / 磨砂强度 / 背景画面 / 完全透明） | ✅ 可以，带球不带球都能跑 |
+
+**每个包都是独立的**：管理器不依赖任何一个插件，插件也不依赖管理器——没有球时玻璃退回自带的悬浮按钮，有球时它把面板和配置卡片都交给球。所以你可以只装管理器，也可以只装某一个插件。
 
 后续适配悬浮球的插件都放这个仓库。**球是主体，插件是围绕它的赠品**——每加一个插件，球不用改一行代码。
 
 两者都是**免构建**的纯 JavaScript：Host 半边是普通 ESM，浏览器半边是手写的 `window.__ModuleLoader__.load({ id, factory })` 闭包工厂——也就是 dsh 官方 tsdown 客户端预设产物遵守的同一注册协议。dsh 仓库的 `packages/client/tsdown.client.ts` 预设没有对外发布，第三方包只能自带打包器或手写这个包装，这里选择手写。
 
-> **许可分层**：代码 MIT，[`assets/mascot.png`](packages/dsh-client-ui-ball/assets/mascot.png) 单独按 CC BY-NC-SA 4.0。详见[文末](#许可)与 [`NOTICE.md`](NOTICE.md)。
+> **许可分层**：代码 MIT，[`assets/mascot.png`](packages/dsh-client-ui-ball/assets/mascot.png) 与 [`assets/packs/`](packages/dsh-client-ui-ball/assets/packs) 里的形象单独按 CC BY-NC-SA 4.0。详见[文末](#许可)与 [`NOTICE.md`](NOTICE.md)。
 
 ---
 
@@ -53,78 +55,107 @@
 ### 1. 安装到 profile
 
 ```powershell
-# 装进桌面版（默认）
+# 全都装上（管理器 + 附赠的磨砂玻璃）
 ./scripts/install.ps1
 
-# 或装进 Web 版 profile
+# 只要管理器——别人做的插件照样能接进来
+./scripts/install.ps1 -Only dsh-client-ui-ball
+
+# 只要某一个附赠插件（不装管理器也能跑）
+./scripts/install.ps1 -Only dsh-client-ui-glass
+./scripts/install.ps1 -Only ui-glass          # 行 id 也行
+
+# 装进 Web 版 profile
 ./scripts/install.ps1 -Profile web
 
 # 指定 Harness home（默认读 $env:DSH_HOME，再退回 ~/.dsh）
 ./scripts/install.ps1 -DshHome 'D:\dsh-home'
 ```
 
-脚本做两件事：把两个包复制进 `<profile>/node_modules/`，并往 `<profile>/cordis.patch.yml` 追加一段带标记的 bundle 块。带标记所以**可重复执行**，`./scripts/uninstall.ps1` 能精确移除它加的东西。
-
-<details>
-<summary>为什么不用包管理器也能装上</summary>
-
-dsh 的模块解析是**双锚点**设计：
-
-| 路径 | 角色 |
-|---|---|
-| `<profile>/node_modules` | pnpm 管理区，第三方插件的正式位置 |
-| `$DSH_HOME/profiles/node_modules` | 安装依赖镜像（指向 dsh 自身依赖闭包，含 `@deepseek-ai/cordis`、`@deepseek-ai/schemastery`） |
-
-包放进第一个锚点后，它 `import '@deepseek-ai/schemastery'` 会向上走一层命中镜像，所以无需安装步骤。
-
-桌面版 profile 由 Electron 独占，CLI 会拒绝 `dsh plugin --profile desktop`；这个脚本写的就是应用内 Plugins 页面会写的那两样东西。
-</details>
-
-### 2. 生效
-
-dsh 会热重载 profile 的 `cordis.patch.yml`，通常**不用重启**。若没反应，重启 dsh。
-
-### 3. 卸载
+脚本做两件事：把包复制进 `<profile>/node_modules/`，并按**磁盘上实际装了哪些包**重建 `<profile>/cordis.patch.yml` 里那段带标记的 bundle 块。所以**可重复执行**，也可以分几次增量装——第二次只装玻璃时，球那一行不会被弄丢。
 
 ```powershell
-./scripts/uninstall.ps1
+./scripts/uninstall.ps1                      # 全卸
+./scripts/uninstall.ps1 -Only ui-glass       # 只卸玻璃，球留着
 ```
 
-### 也可以用桌面版 Plugins 页面
+### 2. 给 AI agent 的安装说明
 
-两个包都声明了 `dsh.bundle.patch`，所以在侧边栏 **Plugins → 添加插件** 里填仓库内对应包的绝对路径同样可以安装，依赖会被正确登记。插件装好后，该行会出现 **Configure** 按钮——这就是官方的插件配置入口。
+把下面整段丢给你的编码 agent（Claude Code / Codex / Cursor / dsh 本身都行），它会自己完成安装：
+
+````text
+把这个仓库的 dsh 插件装进本机的 dsh：https://github.com/NeitherTourRest/dsh-plugin-manager
+
+要求：
+1. 先读 README.md 的「快速开始」和 packages/dsh-client-ui-ball/PROTOCOL.md。
+2. 确认 $DSH_HOME（未设置则默认 ~/.dsh），并列出 $DSH_HOME/profiles/ 下已有的 profile。
+   桌面版 profile 名是 desktop。
+3. 用仓库自带的脚本安装，不要手写 cordis.patch.yml：
+     pwsh -File scripts/install.ps1 -Profile <profile> [-Only <包名或行id>]
+   只装 dsh-client-ui-ball 即为「只要插件管理器」。
+4. 脚本必须能重复执行且不产生重复的 insert 块。装完请检查
+   <profile>/cordis.patch.yml 里 `- insert:` 只出现一次，且每个已装包各有一行。
+5. 告诉我：装进了哪个 profile、装了哪些包、需要重启 dsh 还是刷新页面即可。
+
+不要修改仓库里的任何文件；不要动 profile 里 cordis.patch.yml 标记块以外的内容。
+````
+
+### 3. 生效
+
+改了 `cordis.patch.yml` 的**插件行**（安装/卸载/启用/停用）→ 重启 dsh。
+只改了插件的 `lib/client.js`（浏览器半边）→ 刷新页面即可。
+
+### 4. 也可以用桌面版 Plugins 页面
+
+每个包都声明了 `dsh.bundle.patch`，所以在侧边栏 **Plugins → 添加插件** 里填仓库内对应包的绝对路径同样可以安装，依赖会被正确登记。装好后该行会出现 **Configure** 按钮——这就是官方的插件配置入口。
+
+只装其中一个包也完全可以，它们之间没有依赖。
 
 ---
 
-## 给插件作者：`dsh.ball` 协议
+## 做一个能被管理器识别的插件
 
-这是球的核心。**加入它只需要在 `package.json` 里声明一段**（不需要依赖本仓库的任何代码，也不需要装什么）：
+**你不需要依赖本仓库的任何代码，也不需要装什么。** 只要在你自己的 `package.json` 里声明一段 `dsh.ball`，悬浮球就会认出你：
 
 ```json
-"dsh": {
-  "ball": {
-    "id": "my-plugin",
-    "title": { "zh": "我的插件", "en": "My plugin" },
-    "icon": "⚙",
-    "order": 20,
-    "settings": {
-      "namespace": "my-plugin",
-      "fields": [
-        { "key": "enabled", "kind": "toggle", "label": { "zh": "启用", "en": "Enabled" } },
-        { "key": "level", "kind": "range", "min": 0, "max": 10, "step": 1,
-          "unit": "级", "label": { "zh": "等级", "en": "Level" } }
-      ]
+{
+  "name": "my-dsh-plugin",
+  "exports": { ".": "./lib/index.js", "./client": "./lib/client.js" },
+  "dsh": {
+    "client": { "platform": "web" },
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "ball": {
+      "id": "my-plugin",
+      "title": { "zh": "我的插件", "en": "My plugin" },
+      "icon": "⚙",
+      "order": 20,
+      "settings": {
+        "namespace": "my-plugin",
+        "fields": [
+          { "key": "enabled", "kind": "toggle", "label": { "zh": "启用", "en": "Enabled" } },
+          { "key": "level", "kind": "range", "min": 0, "max": 10, "step": 1, "unit": "级",
+            "label": { "zh": "等级", "en": "Level" } },
+          { "key": "mode", "kind": "select", "label": { "zh": "模式", "en": "Mode" },
+            "options": [{ "value": "a", "label": { "zh": "甲", "en": "A" } }] },
+          { "key": "art", "kind": "image", "label": { "zh": "图片", "en": "Image" } }
+        ]
+      }
     }
   }
 }
 ```
 
-悬浮球会替你完成：列出模块（**即使你的客户端半边没在运行**）、从字段生成设置表单、注册 Plugins 页面的配置卡片、提供启用/停用与恢复默认。
+**声明完就结束了。** 悬浮球会替你：
 
-字段类型：`toggle` / `range` / `select` / `text` / `image`（后者自带文件选择器）。
-**完整规范见 [`PROTOCOL.md`](packages/dsh-client-ui-ball/PROTOCOL.md)。**
+- 把模块列进菜单——**即使你的客户端半边没在运行**（它扫的是 manifest，不是等你自报）
+- 从 `fields` **自动生成设置表单**并写进你的 settings 命名空间
+- 在 Plugins 页面**注册配置卡片**（`<包名>#<行id>`）
+- 提供**启用 / 停用**（走 dsh 自己的 plugin manager remote）与**恢复默认**
 
-需要自定义面板时，在客户端半边再注册一个实时面板即可，**实时面板优先**：
+五种字段类型：`toggle` / `range` / `select` / `text` / `image`（自带文件选择器）。
+完整规范——清单每个字段、目录线格式、管理动作、形象包、兼容规则——见 **[`PROTOCOL.md`](packages/dsh-client-ui-ball/PROTOCOL.md)**。
+
+需要自定义面板时，再在客户端半边注册一个实时面板即可，**实时面板优先于声明生成的表单**：
 
 ```js
 const ball = ctx.get('ball')
@@ -132,18 +163,25 @@ ctx.effect(() => ball.register({
   id: 'my-plugin',                    // 必须与清单里的 id 一致
   label: () => t('panel'),
   render(container, api) {
-    container.append(myPanel())       // container 是球面板里的一个 div
+    container.append(myPanel())
     return () => { /* 离开面板时清理 */ }
   },
 }), 'my-plugin: ball panel')
 ```
 
-**要点：**
+> ⚠️ **在你的客户端半边里，服务一律用 `ctx.inject` 获取，不要用 `ctx.get`。**
+> 客户端插件在 `apply()` 运行时，别的插件往往还没激活：`ctx.get('theme')` 会返回 `undefined` 并**永远保持 undefined**。
+> 这一类错误的表现是「重启后失效、停用再启用就好了」，极难排查。用 `ctx.inject(['theme'], ctx => …)` 才会等待服务就绪。
+> 本仓库的玻璃插件就踩过这个坑——`theme` 和 `settingsScope` 各一次。
+
+---
+
+## 面板作者的几点提醒
 
 - 只有一个面板时点球**直接进面板**，多个才显示列表。
-- 面板**切走即销毁**（调用你返回的清理函数），切回来重新 `render`。
-- 球的面板内容在球的 shadow root 里，**文档级样式表穿不进去**——面板请自带 shadow root（`dsh-client-ui-glass` 就是这么做的，可以直接抄）。
-- 用 `ctx.inject(['ball'], …)` 而不是 `ctx.get` 可以等待服务，装包顺序就无所谓。
+- 面板**切走即销毁**（调用你返回的清理函数），切回来重新 `render`。不要假设面板 DOM 会一直存在。
+- 球的面板内容在球的 shadow root 里，**文档级样式表穿不进去**——面板请自带 shadow root（[`dsh-client-ui-glass`](packages/dsh-client-ui-glass/lib/client.js) 就是这么做的，可以直接抄）。
+- 等球可用用 `ctx.inject(['ball'], …)`，不要用 `ctx.get('ball')`：装包顺序就无所谓了。
 
 ---
 

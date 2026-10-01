@@ -19,13 +19,30 @@
 [CmdletBinding()]
 param(
   [string]$Profile = 'desktop',
-  [string]$DshHome
+  [string]$DshHome,
+  [string[]]$Only
 )
 
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$names = @('dsh-client-ui-ball', 'dsh-client-ui-glass')
+$available = @(
+  @{ Name = 'dsh-client-ui-ball'; Row = 'ui-ball' },
+  @{ Name = 'dsh-client-ui-glass'; Row = 'ui-glass' }
+)
+
+# The packages are independent, so removing one leaves the others installed.
+# The block is rewritten from what is still on disk rather than from the list
+# this run targeted.
+$targets = $available
+if ($Only) {
+  $targets = @($available | Where-Object { $Only -contains $_.Name -or $Only -contains $_.Row })
+  if ($targets.Count -eq 0) {
+    $known = ($available | ForEach-Object { "$($_.Name) ($($_.Row))" }) -join ', '
+    throw "-Only matched nothing. Known packages: $known"
+  }
+}
+$names = @($targets | ForEach-Object { $_.Name })
 
 if (-not $DshHome -or $DshHome -eq '') {
   $DshHome = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }
@@ -70,6 +87,16 @@ foreach ($name in $names) {
     Remove-Item -LiteralPath $target -Recurse -Force
     Write-Host "  remove  $name"
   }
+}
+
+# Re-add a block for the packages that are still installed.
+$remaining = @($available | Where-Object { Test-Path -LiteralPath (Join-Path $modulesDir $_.Name) })
+if ($remaining.Count -gt 0 -and (Test-Path -LiteralPath $patchPath)) {
+  $block = @($begin, '- insert:') + ($remaining | ForEach-Object { "    - id: $($_.Row)`n      name: '$($_.Name)'" }) + @($end)
+  $existing = Get-Content -Raw -Encoding UTF8 $patchPath
+  if (-not $existing.EndsWith("`n")) { $existing += "`n" }
+  Set-Content -LiteralPath $patchPath -Encoding UTF8 -NoNewline -Value ($existing + "`n" + (($block -join "`n") + "`n"))
+  Write-Host "  patch   kept $($remaining.Count) package row(s)"
 }
 
 Write-Host ''

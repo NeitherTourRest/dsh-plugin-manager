@@ -28,24 +28,41 @@
 .PARAMETER Force
   Replace already-installed copies of the packages.
 
+.PARAMETER Only
+  Install only the named packages, by directory name or by module row id.
+  The packages are independent: the ball runs with nothing else installed, and
+  glass runs with or without the ball. Omit this to install everything here.
+
 .EXAMPLE
   ./scripts/install.ps1
   ./scripts/install.ps1 -Profile web
+  ./scripts/install.ps1 -Only dsh-client-ui-ball
+  ./scripts/install.ps1 -Only ui-glass
 #>
 [CmdletBinding()]
 param(
   [string]$Profile = 'desktop',
   [string]$DshHome,
-  [switch]$Force
+  [switch]$Force,
+  [string[]]$Only
 )
 
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$packages = @(
+$available = @(
   @{ Name = 'dsh-client-ui-ball'; Row = 'ui-ball' },
   @{ Name = 'dsh-client-ui-glass'; Row = 'ui-glass' }
 )
+
+$packages = $available
+if ($Only) {
+  $packages = @($available | Where-Object { $Only -contains $_.Name -or $Only -contains $_.Row })
+  if ($packages.Count -eq 0) {
+    $known = ($available | ForEach-Object { "$($_.Name) ($($_.Row))" }) -join ', '
+    throw "-Only matched nothing. Known packages: $known"
+  }
+}
 
 if (-not $DshHome -or $DshHome -eq '') {
   $DshHome = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }
@@ -89,34 +106,37 @@ foreach ($package in $packages) {
 }
 
 # The patch is a top-level YAML array of loader entries. One `insert` entry
-# carries both rows; the markers make the block findable and removable.
+# carries every installed row; the markers make the block findable and
+# removable.
+#
+# The block is rebuilt from the packages present on disk, never from the ones
+# this run targeted. Installing one package into a profile that already has
+# another must add its row to the existing block — skipping because a block
+# exists would copy the package without ever loading it, which looks exactly
+# like a broken plugin.
+$installed = @($available | Where-Object { Test-Path -LiteralPath (Join-Path $modulesDir $_.Name) })
 $block = @(
   $begin
   '- insert:'
-) + ($packages | ForEach-Object { "    - id: $($_.Row)`n      name: '$($_.Name)'" }) + @(
+) + ($installed | ForEach-Object { "    - id: $($_.Row)`n      name: '$($_.Name)'" }) + @(
   $end
 )
 $blockText = ($block -join "`n") + "`n"
 
 $existing = if (Test-Path -LiteralPath $patchPath) { Get-Content -Raw -Encoding UTF8 $patchPath } else { '' }
-$legacyPattern = "(?ms)^\r?\n?" + [regex]::Escape($legacyBegin) + ".*?" + [regex]::Escape($legacyEnd) + "\r?\n?"
-$stripped = [regex]::Replace($existing, $legacyPattern, '')
-$migrated = $stripped -ne $existing
-$existing = $stripped
-if ($existing -match [regex]::Escape($begin)) {
-  Write-Host ''
-  if ($migrated) {
-    Set-Content -LiteralPath $patchPath -Encoding UTF8 -NoNewline -Value $existing
-    Write-Host '  migrate replaced the block written under the old repository name'
-  } else {
-    Write-Host "  keep    cordis.patch.yml (block already present)"
-  }
-} else {
-  if ($existing.Length -gt 0 -and -not $existing.EndsWith("`n")) { $existing += "`n" }
-  Set-Content -LiteralPath $patchPath -Encoding UTF8 -NoNewline -Value ($existing + "`n" + $blockText)
-  Write-Host ''
-  Write-Host "  patch   cordis.patch.yml"
+# Drop whatever block is there — the current name and the pre-rename one — and
+# write the rebuilt block in its place.
+$before = $existing
+foreach ($pair in @(@($begin, $end), @($legacyBegin, $legacyEnd))) {
+  $pattern = "(?ms)^\r?\n?" + [regex]::Escape($pair[0]) + ".*?" + [regex]::Escape($pair[1]) + "\r?\n?"
+  $existing = [regex]::Replace($existing, $pattern, '')
 }
+$migrated = $existing -ne $before -and $before -match [regex]::Escape($legacyBegin)
+if ($existing.Length -gt 0 -and -not $existing.EndsWith("`n")) { $existing += "`n" }
+Set-Content -LiteralPath $patchPath -Encoding UTF8 -NoNewline -Value ($existing + "`n" + $blockText)
+Write-Host ''
+if ($migrated) { Write-Host '  migrate replaced the block written under the old repository name' }
+else { Write-Host "  patch   cordis.patch.yml ($($installed.Count) row(s))" }
 
 Write-Host ''
 Write-Host 'Done. Restart dsh if the profile does not hot-reload its patch layer.'
