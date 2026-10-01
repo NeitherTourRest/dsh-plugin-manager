@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Shared floating ball — browser half.
  *
  * One draggable mascot button that hosts the settings panel of every other dsh
@@ -127,7 +127,6 @@ window.__ModuleLoader__.load({
         packDefault: '默认',
         packDefaultHint: '仓库自带的形象（assets/mascot.*），没有则用内置 SVG',
         packGallery: '形象包',
-        diagnostics: '诊断',
         imagePick: '选择图片',
         imageClear: '恢复内置',
         size: '大小',
@@ -151,7 +150,6 @@ window.__ModuleLoader__.load({
         packDefault: 'Default',
         packDefaultHint: 'The artwork shipped beside the package (assets/mascot.*), else the built-in SVG',
         packGallery: 'Packs',
-        diagnostics: 'Diagnostics',
         imagePick: 'Choose image',
         imageClear: 'Restore built-in',
         size: 'Size',
@@ -345,13 +343,6 @@ window.__ModuleLoader__.load({
 
 .notice { margin: 8px 0; color: #a9adb4; font-size: 12px; line-height: 1.65; }
 
-/* The diagnostics report: selectable, monospaced, and scrollable. */
-.dump {
-  margin: 0; padding: 9px 10px; border-radius: 9px; background: rgba(0, 0, 0, 0.3);
-  color: #cfd3d9; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-all;
-  max-height: 54vh; overflow: auto; user-select: text;
-}
 
 .body { padding: 0 12px 13px; overflow-y: auto; }
 .body[hidden] { display: none; }
@@ -571,7 +562,6 @@ window.__ModuleLoader__.load({
       // permanently unreachable — which is why nothing this plugin ever set
       // reached the Host document.
       ctx.inject(['settingsScope'], (scopeCtx) => {
-        scopeHealth = 'resolved'
         scope = scopeCtx.settingsScope.bind({ namespace: NAMESPACE })
         const sync = () => {
           const snapshot = scope.getSnapshot()
@@ -728,8 +718,6 @@ window.__ModuleLoader__.load({
        */
       let managerApi
       let sessionStatus
-      /** 'resolved' once the settings scope arrives; null while it has not. */
-      let scopeHealth = null
 
       /**
        * Resolve a localized pair against the active language, preferring the
@@ -1041,10 +1029,6 @@ window.__ModuleLoader__.load({
           console.error(`[${PLUGIN_ID}] panel "${id}" failed to render`, error)
           note(`${localize({ zh: '面板渲染失败', en: 'The panel failed to render' }, 'panel failed')}: ${String(error)}`)
         }
-        // An empty surface is unreportable, so say what was actually resolved.
-        if (body.childNodes.length === 0) {
-          note(`no panel: live=${String(model.live !== undefined)} settings=${String(model.descriptor?.settings !== undefined)} problem=${String(model.problem)}`)
-        }
       }
 
       /** Rebuild the module list from the directory merged with live registrations. */
@@ -1132,21 +1116,11 @@ window.__ModuleLoader__.load({
       const toggle = () => { if (surface.hidden) open(); else close() }
 
       /**
-       * Everything needed to diagnose this composition, as text.
-       *
-       * This plugin runs where it cannot be observed: no console, no inspector,
-       * only what a user can read off the screen and retype. Guessing across that
-       * gap cost several wrong fixes, so the whole state is dumped at once
-       * instead of one bit per round trip.
-       *
-       * @returns {string} the report.
-       */
-      /**
        * This plugin's own settings, in the shape the form renderer expects.
        *
        * The form is written against a namespace binding, but the ball's own
        * appearance is held by its local bridge. Presenting that bridge in the
-       * same shape lets one renderer serve both without the ball depending on a
+       * same shape lets one renderer serve both, without the ball depending on a
        * settings service the composition may not have.
        *
        * @returns {object} a namespace-shaped reader and writer.
@@ -1156,83 +1130,7 @@ window.__ModuleLoader__.load({
         write: (key, value) => { settings.commit(key, value) },
         reset: () => { for (const key of Object.keys(DEFAULTS)) settings.commit(key, DEFAULTS[key]) },
         subscribe: (listener) => settings.subscribe(listener),
-        health: () => ({ status: 'local', writable: true, error: null, scope: true }),
       })
-
-      const diagnose = () => {
-        const lines = []
-        const put = (label, value) => lines.push(`${label.padEnd(20)}${value}`)
-        put('frame', ballState)
-        put('local mascot', localMascot)
-        put('packs', String(packs.length))
-        put('directory', `${String(directory.modules.length)} module(s), protocol ${String(directory.protocol)}, error ${String(directory.error)}`)
-        put('registry', [...entries.keys()].join(', ') || '(none)')
-        put('manager', managerApi === undefined ? 'absent' : 'present')
-        put('session status', sessionStatus === undefined ? 'absent' : 'present')
-
-        lines.push('', 'services (ctx.get):')
-        for (const name of ['settingsScope', 'locale', 'slots', 'theme', 'remote', 'remote.pluginManager', 'uiSession', 'sessions', 'ball']) {
-          let value
-          try { value = ctx.get(name) } catch (error) { value = `THROWS ${String(error)}` }
-          lines.push(`  ${name.padEnd(22)}${value === undefined ? 'undefined' : 'present'}`)
-        }
-
-        lines.push('', 'settings namespaces:')
-        // The scope this plugin actually holds, taken from its own injection.
-        // `ctx.get('settingsScope')` on this outer context reports what this
-        // plugin may reach, not what the composition provides — ui-settings-plugins
-        // injects the service and is demonstrably active, so reading undefined
-        // from here says nothing about whether the service exists.
-        put('scope injection', scopeHealth === null ? 'not resolved' : 'resolved')
-        for (const [namespace, binding] of bindings) {
-          const health = binding.health()
-          lines.push(`  ${namespace} scope=${String(health.scope)} status=${health.status} writable=${String(health.writable)} error=${String(health.error)}`)
-          try {
-            lines.push(`    values=${JSON.stringify(binding.read()).slice(0, 280)}`)
-          } catch (error) {
-            lines.push(`    read THROWS ${String(error)}`)
-          }
-        }
-
-        lines.push('', 'document:')
-        const root = document.documentElement
-        lines.push(`  html flags          enabled=${String(root.hasAttribute('data-dshw-enabled'))} clear=${String(root.hasAttribute('data-dshw-clear'))}`)
-        const layer = document.querySelector('.dshw-backdrop')
-        if (layer === null) {
-          lines.push('  backdrop            MISSING')
-        } else {
-          const style = window.getComputedStyle(layer)
-          const rect = layer.getBoundingClientRect()
-          lines.push(`  backdrop            display=${style.display} position=${style.position} z=${style.zIndex} visibility=${style.visibility} opacity=${style.opacity}`)
-          lines.push(`  backdrop rect       ${String(Math.round(rect.width))}x${String(Math.round(rect.height))}`)
-          const art = layer.querySelector('.dshw-backdrop__image')
-          lines.push(`  wallpaper inline    ${String((art?.style.backgroundImage ?? '').length)} chars, size=${String(art?.style.backgroundSize ?? '')}`)
-          const computed = art === null ? '' : window.getComputedStyle(art).backgroundImage
-          lines.push(`  wallpaper computed  ${String(computed.length)} chars`)
-        }
-        // Whether glass's token layer reached the document. It is written as
-        // inline custom properties on <body>, and without it the product's own
-        // surfaces paint opaque over the wallpaper.
-        const inlineVars = document.body?.getAttribute('style') ?? ''
-        lines.push(`  token layer         ${inlineVars.includes('--dsw-alias') ? 'applied' : 'ABSENT'}`)
-        const sheets = [...document.querySelectorAll('style[data-plugin]')].map(tag => tag.dataset.pluginCss ?? tag.dataset.plugin)
-        lines.push(`  sheets              ${sheets.join(', ') || '(none)'}`)
-        const shell = document.querySelector('#root')
-        if (shell !== null) {
-          const style = window.getComputedStyle(shell)
-          lines.push(`  #root               background=${style.backgroundColor} filter=${style.backdropFilter || style.webkitBackdropFilter || 'none'}`)
-        }
-
-        lines.push('', 'storage:')
-        try {
-          const keys = Object.keys(window.localStorage).filter(key => key.startsWith('dsh'))
-          if (keys.length === 0) lines.push('  (no dsh keys)')
-          for (const key of keys) lines.push(`  ${key.padEnd(28)}${String(window.localStorage.getItem(key)).length} chars`)
-        } catch (error) {
-          lines.push(`  THROWS ${String(error)}`)
-        }
-        return lines.join('\n')
-      }
 
       // The registry is the whole cross-plugin contract. The service is a thin
       // face over it so the UI can read the same map without handing
@@ -1387,22 +1285,6 @@ window.__ModuleLoader__.load({
       // this one regardless of composition order.
       ctx.provide(SERVICE, service)
 
-      // A reserved entry reporting this composition's state. It is the only
-      // observability this plugin has: no console, no inspector, and a user who
-      // can only retype what is on screen.
-      ctx.effect(() => service.register({
-        id: 'ui-ball-diagnostics',
-        label: () => translate('diagnostics'),
-        icon: '🩺',
-        order: 9999,
-        render(container) {
-          const pre = document.createElement('pre')
-          pre.className = 'dump'
-          pre.textContent = diagnose()
-          container.append(pre)
-        },
-      }), 'ui-ball: diagnostics entry')
-
       // The manager announces its own changes; a reconnect may have changed the
       // composition without an announcement, so both refresh the directory.
       ctx.effect(() => {
@@ -1479,18 +1361,11 @@ window.__ModuleLoader__.load({
       const listeners = new Set()
       /** Bound once the settings plugin activates; see the injection below. */
       let scope = null
-      /** Last observed namespace state, reported in the panel so a dead form says why. */
-      let status = 'waiting for the settings service'
-      let writable = false
-      let lastError = null
-
       const notify = () => { for (const listener of [...listeners]) listener() }
 
       const read = () => {
         if (scope === null) return { ...defaults }
         const snapshot = scope.getSnapshot()
-        status = String(snapshot.status)
-        writable = snapshot.writable === true
         const section = snapshot.status === 'ready' ? snapshot.value : undefined
         if (typeof section !== 'object' || section === null) return { ...defaults }
         const values = { ...defaults }
@@ -1508,39 +1383,28 @@ window.__ModuleLoader__.load({
         scope = scopeCtx.settingsScope.bind({ namespace: declaration.namespace })
         scopeCtx.effect(() => scope.subscribe(() => { notify() }), `ui-ball: ${declaration.namespace} settings`)
         notify()
-        return () => { scope = null; status = 'waiting for the settings service' }
+        return () => { scope = null }
       })
 
       return {
         read,
-        /** @returns {{ status: string, writable: boolean, error: string | null, scope: boolean }} what the panel needs to explain itself. */
-        health: () => ({ status, writable, error: lastError, scope: scope !== null }),
         subscribe(listener) {
           listeners.add(listener)
           return () => { listeners.delete(listener) }
         },
         write(key, value) {
-          if (scope === null) {
-            lastError = `no settings service for "${declaration.namespace}"`
-            notify()
-            return
-          }
-          // A rejected promise and a synchronous throw are both possible here,
-          // and both were invisible: the panel simply did nothing.
+          if (scope === null) return
+          // A rejected promise and a synchronous throw are both possible, and
+          // neither is visible from the panel, so both are logged.
           try {
             const result = scope.set(key, value)
             if (result !== null && typeof result === 'object' && typeof result.then === 'function') {
-              result.then(
-                () => { lastError = null; notify() },
-                (error) => { lastError = `${key}: ${String(error)}`; notify() },
-              )
-            } else {
-              lastError = null
-              notify()
+              result.then(undefined, (error) => {
+                console.error(`[${PLUGIN_ID}] could not write ${declaration.namespace}.${key}`, error)
+              })
             }
           } catch (error) {
-            lastError = `${key}: ${String(error)}`
-            notify()
+            console.error(`[${PLUGIN_ID}] could not write ${declaration.namespace}.${key}`, error)
           }
         },
         reset() {
@@ -1659,23 +1523,6 @@ window.__ModuleLoader__.load({
       reset.append(resetButton)
       container.append(reset)
 
-      // A form that cannot reach its namespace looks identical to one that can,
-      // and says nothing when a write fails. This is the only place a user can
-      // see the difference, so it states the namespace's own health.
-      const health = document.createElement('p')
-      health.className = 'notice'
-      container.append(health)
-      const renderHealth = () => {
-        const state = typeof settings.health === 'function' ? settings.health() : undefined
-        if (state === undefined) { health.hidden = true; return }
-        const healthy = state.error === null && state.status === 'ready' && state.writable
-        health.hidden = healthy
-        if (healthy) return
-        health.textContent = state.error !== null
-          ? `⚠ ${state.error}`
-          : `settings ${state.scope ? state.status : 'unavailable'}${state.writable ? '' : ' · read-only'}`
-      }
-
       /** Refresh one control's readout from the control itself, not from storage. */
       const show = (field, control) => {
         const entry = outputs.get(field.key)
@@ -1715,7 +1562,6 @@ window.__ModuleLoader__.load({
           else if (entry.field.kind === 'toggle') entry.output.textContent = value === true ? '✓' : ''
           else entry.output.textContent = ''
         }
-        renderHealth()
       }
 
       const unsubscribe = settings.subscribe(sync)

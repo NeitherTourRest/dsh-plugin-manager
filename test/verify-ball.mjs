@@ -271,11 +271,8 @@ const host = doc.querySelector('body > .dshb-host')
 check('mounts the ball host under body', host !== null)
 check('provides the ctx.ball service', provided.has('ball'))
 const ball = provided.get('ball')
-// The ball always contributes its own diagnostics panel; the harness filters it
-// out so each assertion can speak about the registrations it made itself.
-const DIAGNOSTICS = 'ui-ball-diagnostics'
-const panels = () => ball.entries().filter(entry => entry.id !== DIAGNOSTICS)
-const menuRows = () => [...menu.children].filter(row => row.dataset.entry !== DIAGNOSTICS)
+const panels = () => ball.entries()
+const menuRows = () => [...menu.children]
 
 const shadow = host.shadowRoot
 const fab = shadow.querySelector('.ball')
@@ -352,13 +349,8 @@ check('ball.close() hides the surface', surface.hasAttribute('hidden'))
 // --- a single entry opens straight onto its panel ---------------------------
 firstDispose()
 check('disposing a registration removes it', panels().map(e => e.id).join() === 'b')
-// The diagnostics panel is always registered, so a composition never holds a
-// single panel and `open()` always shows the menu. Opening by id still reaches
-// the panel directly.
 ball.open()
-check('the menu lists every panel', menu.hidden === false)
-ball.open('b')
-check('ball.open(id) opens that panel directly', rendered.container.textContent === 'panel-b')
+check('one entry opens straight onto its panel', !menu.hidden === false && rendered.container.textContent === 'panel-b')
 ball.close()
 disposeB()
 check('the registry empties', panels().length === 0)
