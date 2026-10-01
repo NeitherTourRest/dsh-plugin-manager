@@ -1210,6 +1210,11 @@ window.__ModuleLoader__.load({
           const computed = art === null ? '' : window.getComputedStyle(art).backgroundImage
           lines.push(`  wallpaper computed  ${String(computed.length)} chars`)
         }
+        // Whether glass's token layer reached the document. It is written as
+        // inline custom properties on <body>, and without it the product's own
+        // surfaces paint opaque over the wallpaper.
+        const inlineVars = document.body?.getAttribute('style') ?? ''
+        lines.push(`  token layer         ${inlineVars.includes('--dsw-alias') ? 'applied' : 'ABSENT'}`)
         const sheets = [...document.querySelectorAll('style[data-plugin]')].map(tag => tag.dataset.pluginCss ?? tag.dataset.plugin)
         lines.push(`  sheets              ${sheets.join(', ') || '(none)'}`)
         const shell = document.querySelector('#root')

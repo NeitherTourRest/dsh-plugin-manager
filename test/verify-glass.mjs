@@ -112,7 +112,11 @@ function load({ withBall, platform, seed, hostUser, hostValue }) {
 
   const ctx = {
     get: (name) => {
-      if (name === 'theme') return theme
+      // Deliberately absent through ctx.get. The theme service activates after
+      // this plugin, so fetching it during apply returns undefined and the token
+      // layer — the only thing making the product's surfaces translucent — is
+      // never applied. Only the injection may hand it over.
+      if (name === 'theme') return undefined
       if (name === 'settingsScope') return { bind: (spec) => { observed.boundNamespace = spec.namespace; return scope } }
       return undefined
     },
@@ -138,6 +142,7 @@ function load({ withBall, platform, seed, hostUser, hostValue }) {
       // Cordis hands the resolved services over as context properties.
       const props = {}
       if (list.includes('settingsScope')) props.settingsScope = ctx.get('settingsScope')
+      if (list.includes('theme')) props.theme = theme
       callback({ ...ctx, ...props })
       return () => {}
     },

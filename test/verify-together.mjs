@@ -78,10 +78,10 @@ const makeCtx = () => {
       // composition here has the ball and the shell's own services, but no
       // Session UI and no plugin manager, so those requests never resolve.
       const resolvable = (name) => name === 'ball' ? provided.has('ball')
-        : ['locale', 'slots', 'settingsScope'].includes(name)
+        : ['locale', 'slots', 'settingsScope', 'theme'].includes(name)
       if (list.some(name => !resolvable(name))) return () => {}
       // Cordis hands the resolved services over as context properties.
-      callback({ ...ctx, ball: provided.get('ball'), settingsScope: ctx.get('settingsScope') })
+      callback({ ...ctx, ball: provided.get('ball'), settingsScope: ctx.get('settingsScope'), theme: ctx.get('theme') })
       return () => {}
     },
     locale: {

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * dsh-client-ui-glass — browser half (frosted-glass skin for the dsh GUI).
  *
  * Hand-written closure-factory bundle: the dsh client module system executes
@@ -764,7 +764,26 @@ html[data-dshw-clear] .dshw-backdrop {
      */
     function apply(ctx) {
       const settings = createSettings(ctx)
-      const theme = ctx.get('theme')
+
+      /**
+       * The theme service, once it activates.
+       *
+       * Injected, not fetched. `ctx.get('theme')` during apply runs before
+       * ui-theme has activated, so it returns undefined and stays that way for
+       * the life of the page — and the token layer is the only thing making the
+       * product's surfaces translucent. Without it they paint opaque over the
+       * wallpaper. That is why the skin was missing on a fresh start and
+       * appeared after a disable/enable cycle, which runs apply again against a
+       * composition that has settled.
+       */
+      let theme = null
+      ctx.inject(['theme'], (themeCtx) => {
+        theme = themeCtx.theme
+        // The injection may resolve synchronously, before `paint` below has been
+        // initialised, so the repaint is deferred by one turn.
+        queueMicrotask(() => { paint() })
+        return () => { theme = null }
+      })
 
       let translate = (key) => STRINGS.zh[key] ?? key
       let disposeTokens = null
@@ -813,7 +832,7 @@ html[data-dshw-clear] .dshw-backdrop {
         image.style.backgroundSize = FIT_SIZE[state.fit] ?? FIT_SIZE.cover
         image.style.backgroundRepeat = state.fit === 'repeat' ? 'repeat' : 'no-repeat'
 
-        if (theme !== undefined) {
+        if (theme !== null) {
           // The same source replaces the whole layer, so repeated calls during a
           // drag never stack; an empty map removes the layer's effect.
           disposeTokens = theme.overrideTokens(
