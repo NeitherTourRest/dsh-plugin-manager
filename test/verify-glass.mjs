@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Verification harness for packages/dsh-client-ui-glass.
  * Loads the hand-written browser half inside jsdom against a mocked Cordis
  * client context, twice: once with the shared ball present and once without.
@@ -171,7 +171,9 @@ function load({ withBall, platform, seed, hostUser, hostValue }) {
 }
 
 const failures = []
+let total = 0
 const report = (label, checks) => {
+  total += checks.length
   console.log(`\n── ${label} ──`)
   for (const { name, ok, detail } of checks) {
     if (!ok) failures.push(`${label}: ${name}`)
@@ -449,5 +451,5 @@ function readVar(doc, name) {
   return new RegExp(`${name}:([^;}]+)`).exec(css)?.[1]?.trim()
 }
 
-console.log(`\n${failures.length === 0 ? 'all checks passed' : `${failures.length} FAILED:\n  ${failures.join('\n  ')}`}`)
+console.log(`\n${total - failures.length}/${total} checks passed`)
 process.exitCode = failures.length === 0 ? 0 : 1

@@ -236,8 +236,8 @@ CC 的 ShareAlike **不会传染到代码**——图片与代码是彼此独立�
 ## 六、验证
 
 ```sh
-node test/verify-ball.mjs        # 83 项：协议客户端、目录合并、通用表单、替模块注册卡片、启用动作、形象包与状态、拖动、卸载
-node test/verify-ball-host.mjs   # 67 项：清单扫描器、形象包索引与资源路由、自带素材、405/404/HEAD
+node test/verify-ball.mjs        # 92 项：协议客户端、目录合并、通用表单、替模块注册卡片、启用动作、形象包与状态、拖动、卸载
+node test/verify-ball-host.mjs   # 71 项：清单扫描器、形象包索引与资源路由、自带素材、405/404/HEAD
 node test/verify-together.mjs    # 15 项：与 dsh-client-ui-glass 的真实交叉集成
 ```
 
