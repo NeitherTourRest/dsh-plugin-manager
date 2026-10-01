@@ -33,6 +33,18 @@
                   (◕‿◕)
 ```
 
+## 看看它长什么样
+
+球浮在界面右上角；玻璃把面板底色清空，只留你自己设的背景画面：
+
+![悬浮球浮在 dsh 界面右上角，侧边栏、输入框与设置卡片全部透明，背后是一张夜色照片](pic/background.jpg)
+
+面板里每一项都由插件的 `dsh.ball` 声明生成，不同插件各占一张卡片——上面那张示意图里的条目，点开就是这两张：
+
+| [`dsh-client-ui-glass`](packages/dsh-client-ui-glass/README.md) 的「磨砂外观」 | [`dsh-client-ui-ball`](packages/dsh-client-ui-ball/README.md) 的「悬浮球外观」 |
+|---|---|
+| ![磨砂外观面板：启用、不透明度、磨砂程度、背景饱和度、背景压暗、填充方式、背景图 URL，以及不透明 / 磨砂 / 完全透明三个预设和重置](pic/background_setting.jpg) | ![悬浮球外观面板：形象、大小、透明度、动效、面板宽度，以及恢复默认](pic/mascot_setting.jpg) |
+
 ## 仓库里有什么
 
 | 包 | 角色 | 能单独装吗 |
