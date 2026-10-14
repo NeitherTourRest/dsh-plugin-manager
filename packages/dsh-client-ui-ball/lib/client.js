@@ -60,6 +60,9 @@ window.__ModuleLoader__.load({
      */
     const MODULE_DIRECTORY_URL = '/ui-ball/modules'
 
+    /** Storage prefix for one image field's recently used values. */
+    const HISTORY_PREFIX = 'dsh-plugin-manager/recent/'
+
     /** Route the Host half serves the mascot pack index on. */
     const PACKS_URL = '/ui-ball/packs'
 
@@ -78,6 +81,24 @@ window.__ModuleLoader__.load({
 
     /** How long the finished frame stays after the last session stops running. */
     const DONE_HOLD_MS = 6000
+
+    /**
+     * Types whose frames survive only if the file is used as it is. Re-encoding
+     * any of these through a canvas keeps the first frame and drops the rest.
+     */
+    const ANIMATED_TYPES = new Set(['image/gif', 'image/webp', 'image/apng'])
+
+    /** Longest edge allowed for an animated pick. Animation costs size, so this is stricter than a still. */
+    const ANIMATED_MAX_EDGE = 480
+
+    /** How many recently used values an image field keeps. */
+    const HISTORY_LIMIT = 5
+
+    /** Total bytes one field's history may hold; the oldest entries go first. */
+    const HISTORY_BUDGET = 400 * 1024
+
+    /** Longest data URI kept as-is for an animated pick, in characters. */
+    const ANIMATED_DATA_URL_LIMIT = 1_500_000
 
     /**
      * Local mascot state for this plugin run: `unknown` until the one probe
@@ -342,6 +363,22 @@ window.__ModuleLoader__.load({
 .actions button:focus-visible { outline: 2px solid #6ea8fe; outline-offset: 1px; }
 
 .notice { margin: 8px 0; color: #a9adb4; font-size: 12px; line-height: 1.65; }
+
+/* Recently used values for an image field, newest first. */
+.recent { display: flex; align-items: center; gap: 7px; margin: 2px 0 10px; padding-left: 74px; flex-wrap: wrap; }
+.recent[hidden] { display: none; }
+.recent__caption { color: #7f858e; font-size: 11px; }
+.recent__item {
+  width: 34px; height: 34px; flex: 0 0 auto; padding: 0; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 9px;
+  background-color: rgba(255, 255, 255, 0.05);
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+  display: grid; place-items: center; color: #dfe3e8; font-size: 14px;
+  transition: border-color 0.14s ease, transform 0.14s ease;
+}
+.recent__item:hover { border-color: rgba(255, 255, 255, 0.32); transform: translateY(-1px); }
+.recent__item[data-selected='true'] { border-color: #6ea8fe; box-shadow: 0 0 0 1px #6ea8fe inset; }
+.recent__item:focus-visible { outline: 2px solid #6ea8fe; outline-offset: 2px; }
 
 
 .body { padding: 0 12px 13px; overflow-y: auto; }
@@ -1016,7 +1053,7 @@ window.__ModuleLoader__.load({
             const own = model.id === ROW_ID
             const binding = own ? ownBinding() : (bindings.get(id) ?? bindModuleSettings(ctx, declaration))
             if (!own) bindings.set(id, binding)
-            disposeActive = createForm(body, { fields: declaration.fields, settings: binding, localize })
+            disposeActive = createForm(body, { fields: declaration.fields, settings: binding, localize, namespace: own ? NAMESPACE : declaration.namespace })
             drawn = true
           }
           if (!drawn && model.problem !== undefined) { note(model.problem); drawn = true }
@@ -1333,6 +1370,55 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * Recently used values for one image field.
+     *
+     * Kept by the renderer rather than by the plugin whose field it is, so every
+     * image field gets the same behaviour with no protocol change: the store is
+     * keyed by the namespace and the field, and holds only values that were
+     * actually used.
+     *
+     * @param {string} namespace - the settings namespace the field belongs to.
+     * @param {string} key - the field key.
+     * @returns {{ list: () => string[], remember: (value: string) => void }} the store.
+     */
+    function createHistory(namespace, key) {
+      const storageKey = `${HISTORY_PREFIX}${namespace}.${key}`
+      const read = () => {
+        try {
+          const stored = JSON.parse(window.localStorage.getItem(storageKey) ?? '[]')
+          return Array.isArray(stored) ? stored.filter(value => typeof value === 'string') : []
+        } catch {
+          // A hand-edited or unreadable entry costs the history, not the panel.
+          return []
+        }
+      }
+      const write = (values) => {
+        try {
+          window.localStorage.setItem(storageKey, JSON.stringify(values))
+        } catch {
+          // A full quota costs the history and nothing else.
+        }
+      }
+      return {
+        list: read,
+        remember(value) {
+          const entries = read().filter(existing => existing !== value)
+          entries.unshift(value)
+          // The budget matters more than the count: one wallpaper is worth many
+          // mascots, and dropping the oldest keeps the recent ones reachable.
+          let total = 0
+          const kept = []
+          for (const entry of entries.slice(0, HISTORY_LIMIT)) {
+            total += entry.length
+            if (total > HISTORY_BUDGET) break
+            kept.push(entry)
+          }
+          write(kept)
+        },
+      }
+    }
+
+    /**
      * Synthesize the value a declared field shows before the Host answers.
      * @param {object} field - one declared field.
      * @returns {unknown} the first-paint value.
@@ -1429,8 +1515,11 @@ window.__ModuleLoader__.load({
      */
     function createForm(container, deps) {
       const { fields, settings } = deps
+      const namespace = typeof deps.namespace === 'string' ? deps.namespace : 'unknown'
       const controls = new Map()
       const outputs = new Map()
+      /** Redraw callbacks for the image fields' history strips. */
+      const recentFields = []
 
       for (const field of fields) {
         const row = document.createElement('label')
@@ -1485,7 +1574,9 @@ window.__ModuleLoader__.load({
         controls.set(field.key, control)
         container.append(row)
 
-        // An image field is a URL box plus a local picker that stores a data URI.
+        // An image field is a URL box, a local picker, and the values this
+        // field has held before. The history is what keeps a wallpaper swapped
+        // out last week one click away instead of gone.
         if (field.kind === 'image') {
           const bar = document.createElement('div')
           bar.className = 'actions'
@@ -1507,9 +1598,50 @@ window.__ModuleLoader__.load({
             const file = picker.files?.[0]
             picker.value = ''
             if (file === undefined) return
-            void fileToDataUrl(file, IMAGE_MAX_EDGE)
+            // An animated pick keeps its frames: re-encoding through a canvas
+            // would flatten it to one. Only formats that can animate take this
+            // path, and they pay for it in size.
+            const animated = ANIMATED_TYPES.has(file.type)
+            void fileToDataUrl(file, animated ? ANIMATED_MAX_EDGE : IMAGE_MAX_EDGE, { animate: animated })
               .then((dataUrl) => { settings.write(field.key, dataUrl) })
               .catch((error) => { console.error(`[${PLUGIN_ID}] could not read the picked image`, error) })
+          })
+
+          // Recently used values for this field, newest first. Clicking one
+          // selects it; nothing is remembered until a value is actually used.
+          const history = createHistory(namespace, field.key)
+          const strip = document.createElement('div')
+          strip.className = 'recent'
+          container.append(strip)
+          recentFields.push(() => {
+            strip.textContent = ''
+            const entries = history.list()
+            strip.hidden = entries.length === 0
+            if (entries.length === 0) return
+            const caption = document.createElement('span')
+            caption.className = 'recent__caption'
+            caption.textContent = deps.localize({ zh: '用过', en: 'Recent' }, 'Recent')
+            strip.append(caption)
+            for (const value of entries) {
+              const thumb = document.createElement('button')
+              thumb.type = 'button'
+              thumb.className = 'recent__item'
+              thumb.dataset.selected = read(control, field) === value ? 'true' : 'false'
+              if (value.startsWith(PACK_PREFIX)) {
+                // A pack reference has no URL of its own; the pack route draws
+                // it, which is also what makes a preset previewable here.
+                const id = value.slice(PACK_PREFIX.length)
+                thumb.style.backgroundImage = `url("${PACK_ASSET_PREFIX}/${id}/idle")`
+              } else if (isGlyph(value)) {
+                thumb.dataset.kind = 'glyph'
+                thumb.textContent = value
+              } else {
+                thumb.style.backgroundImage = `url("${safeUrl(value)}")`
+              }
+              thumb.title = isGlyph(value) ? value : ''
+              thumb.addEventListener('click', () => { settings.write(field.key, value) })
+              strip.append(thumb)
+            }
           })
         }
       }
@@ -1536,7 +1668,11 @@ window.__ModuleLoader__.load({
       /** Push one control's value to the namespace. */
       const commit = (field, control) => {
         show(field, control)
-        settings.write(field.key, read(control, field))
+        const value = read(control, field)
+        if (field.kind === 'image' && typeof value === 'string' && value.trim() !== '') {
+          createHistory(namespace, field.key).remember(value.trim())
+        }
+        settings.write(field.key, value)
       }
 
       /**
@@ -1564,8 +1700,12 @@ window.__ModuleLoader__.load({
         }
       }
 
-      const unsubscribe = settings.subscribe(sync)
+      const unsubscribe = settings.subscribe(() => {
+        sync()
+        for (const refresh of recentFields) refresh()
+      })
       sync()
+      for (const refresh of recentFields) refresh()
 
       return () => {
         unsubscribe()
@@ -1853,7 +1993,20 @@ window.__ModuleLoader__.load({
      * @param {number} maxEdge - longest edge to keep, in px.
      * @returns {Promise<string>} the encoded image.
      */
-    async function fileToDataUrl(file, maxEdge) {
+    async function fileToDataUrl(file, maxEdge, options = {}) {
+      // An animated file is read as it is. A canvas has one frame, so drawing it
+      // there would silently turn a GIF into a still. Size is the trade, and a
+      // file too large for the settings document falls back to a still rather
+      // than failing outright.
+      if (options.animate === true) {
+        const raw = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.addEventListener('load', () => { resolve(String(reader.result)) })
+          reader.addEventListener('error', () => { reject(new Error('could not read the file')) })
+          reader.readAsDataURL(file)
+        })
+        if (raw.length <= ANIMATED_DATA_URL_LIMIT) return raw
+      }
       const bitmap = await createImageBitmap(file)
       try {
         const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height))

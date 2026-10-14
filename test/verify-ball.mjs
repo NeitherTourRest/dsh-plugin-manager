@@ -529,6 +529,40 @@ if (ownSize !== undefined) ownSize.value = '88'
 ownSize?.dispatchEvent(new window.Event('change', { bubbles: true }))
 check('editing the ball through its own panel resizes it',
   host.style.getPropertyValue('--dshb-size') === '88px', host.style.getPropertyValue('--dshb-size'))
+
+// An image field keeps the values it has held, so a wallpaper swapped out last
+// week is one click away. The store is the renderer's, keyed by namespace and
+// field, which is what gives every plugin's image field the same behaviour.
+const imageField = ownFields.find(field => field.dataset.field === 'image')
+const historyKey = 'dsh-plugin-manager/recent/ui-ball.image'
+check('an image field starts with no history', window.localStorage.getItem(historyKey) === null,
+  String(window.localStorage.getItem(historyKey)))
+imageField.value = 'https://example.test/picked.png'
+imageField.dispatchEvent(new window.Event('input', { bubbles: true }))
+imageField.dispatchEvent(new window.Event('change', { bubbles: true }))
+check('using a value records it in that field history',
+  String(window.localStorage.getItem(historyKey)) === JSON.stringify(['https://example.test/picked.png']),
+  String(window.localStorage.getItem(historyKey)))
+
+imageField.value = 'pack:whale-girl-night'
+imageField.dispatchEvent(new window.Event('change', { bubbles: true }))
+const remembered = JSON.parse(window.localStorage.getItem(historyKey))
+check('newest first, and no duplicates',
+  remembered.join() === 'pack:whale-girl-night,https://example.test/picked.png', remembered.join())
+
+const strip = panelBody.querySelector('.recent')
+check('the strip renders one thumbnail per remembered value',
+  strip !== null && strip.querySelectorAll('.recent__item').length === 2,
+  String(strip?.querySelectorAll('.recent__item').length))
+check('a pack reference previews through the pack route',
+  strip?.querySelector('.recent__item')?.style.backgroundImage.includes('/ui-ball/pack/whale-girl-night/idle'),
+  String(strip?.querySelector('.recent__item')?.style.backgroundImage))
+
+// Clicking a remembered value selects it again.
+strip.querySelectorAll('.recent__item')[1].dispatchEvent(new window.MouseEvent('click', { bubbles: true }))
+check('clicking a remembered value selects it',
+  window.localStorage.getItem('dsh-client-ui-ball/v1')?.includes('https://example.test/picked.png'),
+  String(window.localStorage.getItem('dsh-client-ui-ball/v1'))?.slice(0, 120))
 ball.close()
 
 ball.close()
