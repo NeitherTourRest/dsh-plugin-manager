@@ -89,6 +89,7 @@ window.__ModuleLoader__.load({
         wallpaper: '背景图 URL',
         wallpaperPlaceholder: 'https://… 或 data:image/…',
         pick: '选择本地图片',
+        recent: '用过',
         clearWallpaper: '清除背景',
         presetSolid: '不透明',
         presetGlass: '磨砂',
@@ -110,6 +111,7 @@ window.__ModuleLoader__.load({
         wallpaper: 'Wallpaper URL',
         wallpaperPlaceholder: 'https://… or data:image/…',
         pick: 'Choose image',
+        recent: 'Recent',
         clearWallpaper: 'Clear wallpaper',
         presetSolid: 'Opaque',
         presetGlass: 'Frosted',
@@ -280,6 +282,22 @@ html[data-dshw-clear] .dshw-backdrop {
 .actions button.primary { background: rgba(110, 168, 254, 0.22); border-color: rgba(110, 168, 254, 0.5); }
 
 .note { margin: 10px 0 0; padding: 8px 9px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); color: #a9adb4; font-size: 11px; }
+
+/* Recently used wallpapers, newest first. */
+.recent { margin: 10px 0 0; }
+.recent[hidden] { display: none; }
+.recent__caption { display: block; margin-bottom: 6px; color: #7f858e; font-size: 11px; }
+.recent__items { display: flex; gap: 7px; flex-wrap: wrap; }
+.recent__item {
+  width: 46px; height: 30px; flex: 0 0 auto; padding: 0; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 7px;
+  background-color: rgba(255, 255, 255, 0.05);
+  background-size: cover; background-position: center; background-repeat: no-repeat;
+  transition: border-color 0.14s ease, transform 0.14s ease;
+}
+.recent__item:hover { border-color: rgba(255, 255, 255, 0.32); transform: translateY(-1px); }
+.recent__item[data-selected='true'] { border-color: #6ea8fe; box-shadow: 0 0 0 1px #6ea8fe inset; }
+.recent__item:focus-visible { outline: 2px solid #6ea8fe; outline-offset: 2px; }
 .note[hidden] { display: none; }
 .note b { color: #e7c98a; font-weight: 600; }
 
@@ -488,7 +506,10 @@ html[data-dshw-clear] .dshw-backdrop {
 
       const applyValue = (field, value, durable) => {
         state = { ...state, [field]: value }
-        writeLocal(state)
+        // Serialised only when the gesture ends: writing the mirror on every
+        // pointer event stringifies the state, and the wallpaper alone is
+        // hundreds of kilobytes. That is what made the sliders stutter.
+        if (durable) writeLocal(state)
         publish()
         if (!durable || scope === null) return
         void scope.set(field, value).catch((error) => { console.error(`[${PLUGIN_ID}] settings write failed`, error) })
@@ -716,15 +737,60 @@ html[data-dshw-clear] .dshw-backdrop {
         if (file === undefined) return
         void fileToDataUrl(file).then((dataUrl) => {
           settings.commit('wallpaper', dataUrl)
+          rememberWallpaper(dataUrl)
           if (settings.get().fit === 'repeat') settings.commit('fit', 'cover')
           sync()
         }).catch((error) => { console.error(`[${PLUGIN_ID}] could not read the picked image`, error) })
       })
 
       // Exposed so a caller can force a repaint after an out-of-band change.
+      // The wallpaper is an image field, so it keeps what it has held. This panel
+      // is custom, which means it never reaches the ball's generated form, so it
+      // asks the ball for the same store rather than growing its own.
+      // The packages install independently, so the ball may be older than this
+      // one and have no store yet. Losing the strip is the right trade; losing
+      // the panel is not.
+      const ball = typeof deps.ball === 'function' ? deps.ball() : null
+      // Set once the ball is known to be present; redraws the strip below.
+      let recentStrip = null
+      const recent = typeof ball?.recent === 'function' ? ball.recent(NAMESPACE, 'wallpaper') : null
+      if (recent !== null) {
+        const strip = document.createElement('div')
+        strip.className = 'recent'
+        const caption = document.createElement('span')
+        caption.className = 'recent__caption'
+        caption.textContent = t()('recent')
+        strip.append(caption)
+        const items = document.createElement('div')
+        items.className = 'recent__items'
+        strip.append(items)
+        const renderRecent = () => {
+          const entries = recent.list()
+          strip.hidden = entries.length === 0
+          items.textContent = ''
+          for (const value of entries) {
+            const thumb = document.createElement('button')
+            thumb.type = 'button'
+            thumb.className = 'recent__item'
+            thumb.dataset.selected = settings.get().wallpaper === value ? 'true' : 'false'
+            thumb.style.backgroundImage = `url("${safeUrl(value)}")`
+            thumb.addEventListener('click', () => {
+              settings.commit('wallpaper', value)
+              rememberWallpaper(value)
+              if (settings.get().fit === 'repeat') settings.commit('fit', 'cover')
+              renderRecent()
+            })
+            items.append(thumb)
+          }
+        }
+        root.append(strip)
+        recentStrip = renderRecent
+      }
+
       container.append(root)
-      const unsubscribe = settings.subscribe(sync)
+      const unsubscribe = settings.subscribe(() => { sync(); recentStrip?.() })
       sync()
+      recentStrip?.()
 
       return () => {
         unsubscribe()
@@ -799,6 +865,9 @@ html[data-dshw-clear] .dshw-backdrop {
           + `--dshw-saturate:${state.saturate}%;`
           + `--dshw-scrim:rgba(0, 0, 0, ${(state.dim / 100).toFixed(3)})}`
 
+        // The wallpaper is a data URI of hundreds of kilobytes, and assigning
+        // it to a style property makes the browser re-parse it. It is only
+        // touched when the source actually changed.
         const wallpaper = safeUrl((state.wallpaper ?? '').trim())
         if (wallpaper !== lastWallpaper) {
           lastWallpaper = wallpaper
@@ -896,7 +965,12 @@ html[data-dshw-clear] .dshw-backdrop {
           icon: '◐',
           order: BALL_ORDER,
           label: () => translate('panel'),
-          render: (container) => createPanel(container, { settings, translate: () => translate, isSeeThroughWindow }),
+          render: (container) => createPanel(container, {
+            settings,
+            translate: () => translate,
+            isSeeThroughWindow,
+            ball: () => ballHost,
+          }),
         }), 'ui-glass: ball panel')
       })
 
@@ -1124,7 +1198,7 @@ html[data-dshw-clear] .dshw-backdrop {
                 input.value = ''
                 if (file === undefined) return
                 void fileToDataUrl(file)
-                  .then((dataUrl) => { settings.commit('wallpaper', dataUrl) })
+                  .then((dataUrl) => { settings.commit('wallpaper', dataUrl); rememberWallpaper(dataUrl) })
                   .catch((error) => { console.error(`[${PLUGIN_ID}] could not read the picked image`, error) })
               },
             }),

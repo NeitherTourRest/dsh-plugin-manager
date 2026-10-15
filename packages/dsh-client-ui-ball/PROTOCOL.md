@@ -101,6 +101,21 @@ export function apply(ctx) {
 
 `render(container, api)` 的 `api` 提供 `{ close }`。面板**切走即销毁**（调用你返回的清理函数）。
 
+### `ctx.ball.recent(namespace, key)`
+
+`{ list(): string[], remember(value: string): void }` —— 该图片字段**最近用过的值**，最新的在前，最多 5 个、按总字节数封顶。
+
+声明式表单会自动记录和展示；但**自定义面板不走那个渲染器**，所以要自己接：
+
+```js
+const recent = ball.recent('my-plugin', 'art')   // namespace 与字段 key
+recent.remember(value)                            // 用户选定一个值之后
+for (const value of recent.list()) { /* 画缩略图 */ }
+```
+
+存储按 `命名空间.字段名` 索引，所以同一字段在两种面板里共享同一份历史。
+球可能比你的插件旧、没有这个方法——用 `typeof ball.recent === 'function'` 判断。
+
 > 面板内容在悬浮球的 shadow root 里，**文档级样式表穿不进去**——需要样式就自己挂 shadow root（`dsh-client-ui-glass` 就是这么做的）。
 
 ---

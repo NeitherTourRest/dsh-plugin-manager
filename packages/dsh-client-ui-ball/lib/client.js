@@ -613,7 +613,12 @@ window.__ModuleLoader__.load({
 
       const apply2 = (field, value, durable) => {
         state = { ...state, [field]: value }
-        writeLocal(state)
+        // The mirror is serialised only when the gesture ends. Writing it on
+        // every pointer event stringifies the whole state — including a
+        // wallpaper-sized data URI — at pointer cadence, which is what made
+        // dragging stutter. A drag that never ends costs the mirror, nothing
+        // else: the next commit writes it.
+        if (durable) writeLocal(state)
         publish()
         if (!durable || scope === null) return
         void scope.set(field, value).catch((error) => { console.error(`[${PLUGIN_ID}] settings write failed`, error) })
@@ -1202,6 +1207,23 @@ window.__ModuleLoader__.load({
          */
         entries() {
           return sorted().map(model => ({ id: model.id, label: model.title, icon: model.icon ?? '' }))
+        },
+        /**
+         * Recently used values for one image field, newest first.
+         *
+         * Exposed because a plugin with a custom panel renders its own controls
+         * and never reaches the generated form — which is where this store is
+         * otherwise used. One implementation, both kinds of panel.
+         *
+         * @param {string} namespace - the settings namespace the field belongs to.
+         * @param {string} key - the field key.
+         * @returns {{ list: () => string[], remember: (value: string) => void }} the store.
+         */
+        recent(namespace, key) {
+          if (typeof namespace !== 'string' || typeof key !== 'string') {
+            throw new TypeError('ctx.ball.recent needs a namespace and a field key')
+          }
+          return createHistory(namespace, key)
         },
         /**
          * Observe registry changes.

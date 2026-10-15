@@ -143,6 +143,7 @@ check('one registered panel opens straight onto its page',
   && ballShadow.querySelector('.menu').hasAttribute('hidden'))
 
 const body = ballShadow.querySelector('.body')
+
 const panelShadow = body.firstElementChild?.shadowRoot
 check('the ball renders the glass panel into its own body', panelShadow !== null && panelShadow !== undefined)
 check('the glass panel styles itself inside the ball surface',
